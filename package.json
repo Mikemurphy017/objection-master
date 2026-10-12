@@ -1,0 +1,39 @@
+{
+  "name": "objection-master-pro",
+  "version": "1.0.0",
+  "description": "Turns a LinkedIn objection screenshot into three Oren Klaff-style reply options, tuned per client.",
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.ts",
+    "start": "node --disable-warning=ExperimentalWarning src/server.ts",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.ts",
+    "typecheck": "tsc -p .",
+    "corpus:import": "node --disable-warning=ExperimentalWarning scripts/import-corpus.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mikemurphy017/objection-master.git"
+  },
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/Mikemurphy017/objection-master/issues"
+  },
+  "homepage": "https://github.com/Mikemurphy017/objection-master#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "express": "^5.3.0",
+    "mammoth": "^1.13.0",
+    "multer": "^2.4.0",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "private": "true"
+}
