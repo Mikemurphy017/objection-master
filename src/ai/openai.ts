@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import type { ParsedResponse } from "openai/resources/responses/responses";
 import { GenerationError } from "./errors.ts";
+import { cleanKey } from "./keys.ts";
 import { EXTRACT_SYSTEM, ExtractionSchema, extractPrompt, isSupportedImage, type Extraction } from "./extract.ts";
 import { GenerationSchema, buildSystem, buildUserPrompt, type GenerateInput, type Generation } from "./generate.ts";
 
@@ -13,7 +14,7 @@ const REASONING_EFFORT = process.env.OPENAI_REASONING_EFFORT as Effort | undefin
 
 let client: OpenAI | null = null;
 function getOpenAI(): OpenAI {
-  client ??= new OpenAI();
+  client ??= new OpenAI({ apiKey: cleanKey(process.env.OPENAI_API_KEY) });
   return client;
 }
 

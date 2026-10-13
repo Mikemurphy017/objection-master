@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { GenerationError } from "./errors.ts";
+import { cleanKey } from "./keys.ts";
 
 export { GenerationError };
 
@@ -17,7 +18,7 @@ export const FALLBACK_PARAMS: { betas: Anthropic.Beta.AnthropicBeta[]; fallbacks
 let client: Anthropic | null = null;
 
 export function getClient(): Anthropic {
-  client ??= new Anthropic();
+  client ??= new Anthropic({ apiKey: cleanKey(process.env.ANTHROPIC_API_KEY) });
   return client;
 }
 

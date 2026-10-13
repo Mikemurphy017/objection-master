@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveProviders } from "../src/ai/providers.ts";
+import { cleanKey } from "../src/ai/keys.ts";
 
 test("OpenAI key alone: OpenAI handles replies and screenshots", () => {
   assert.deepEqual(resolveProviders({ OPENAI_API_KEY: "x" }), { generation: "openai", extraction: "openai" });
@@ -23,4 +24,12 @@ test("explicit overrides win, and typos fail loudly", () => {
     { generation: "anthropic", extraction: "openai" },
   );
   assert.throws(() => resolveProviders({ GENERATION_PROVIDER: "gpt" }), /Unknown provider/);
+});
+
+test("pasted API keys are cleaned of quotes and whitespace", () => {
+  assert.equal(cleanKey('  "sk-ant-abc123"\n'), "sk-ant-abc123");
+  assert.equal(cleanKey("'sk-proj-xyz' "), "sk-proj-xyz");
+  assert.equal(cleanKey("sk-plain"), "sk-plain");
+  assert.equal(cleanKey("   "), undefined);
+  assert.equal(cleanKey(undefined), undefined);
 });
