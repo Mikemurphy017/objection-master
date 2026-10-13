@@ -588,11 +588,13 @@ function liveTurn(bubble) {
 async function runScreenshot(attachment, chosenClientId, guidance) {
   state.busy = true;
   const live = liveTurn({ imageUrl: attachment.url, guidance });
-  live.steps(["Reading screenshot", "Matching client", "Writing three replies"]);
+  // In a client's chat (or with a client picked) there's nothing to match.
+  live.steps(chosenClientId ? ["Reading screenshot", "Writing three replies"] : ["Reading screenshot", "Matching client", "Writing three replies"]);
   live.set("Reading screenshot", "active");
   try {
     const form = new FormData();
     form.append("screenshot", attachment.file);
+    if (chosenClientId) form.append("clientId", String(chosenClientId));
     const { extraction, match, imageId } = await api("/api/analyze", { method: "POST", body: form });
     live.set("Reading screenshot", "done");
 
@@ -606,13 +608,8 @@ async function runScreenshot(attachment, chosenClientId, guidance) {
     };
     if (extraction.notes) toast(extraction.notes);
 
-    // An explicit choice (or the open chat) wins; otherwise use the detected client.
-    let clientId = chosenClientId;
-    if (chosenClientId && match.clientId && match.clientId !== chosenClientId) {
-      const detected = state.clients.find((c) => c.id === match.clientId);
-      toast(`Screenshot looks like ${detected?.name}'s conversation. Writing for ${currentClient()?.name ?? "the chosen client"}; change it with Edit if needed.`);
-    }
-    clientId ??= match.clientId;
+    // The open chat (or an explicit pick) always wins; otherwise use the detected client.
+    const clientId = chosenClientId ?? match.clientId;
 
     if (!clientId) {
       state.busy = false;

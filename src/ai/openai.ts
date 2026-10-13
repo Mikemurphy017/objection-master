@@ -24,7 +24,14 @@ function describeOpenAIError(err: unknown): GenerationError {
     return new GenerationError("The OpenAI API key is missing or invalid. Set OPENAI_API_KEY on the server.", 500);
   }
   if (err instanceof OpenAI.RateLimitError) {
-    return new GenerationError("OpenAI is rate limited (or out of credit) right now. Try again in a minute.", 429);
+    // OpenAI uses 429 both for "slow down" and for an account with no credit left.
+    if (err.code === "insufficient_quota") {
+      return new GenerationError(
+        "The OpenAI account is out of credit (insufficient quota). Add billing or credit at platform.openai.com.",
+        429,
+      );
+    }
+    return new GenerationError("OpenAI is rate limiting requests right now. Try again in a minute.", 429);
   }
   if (err instanceof OpenAI.BadRequestError) {
     return new GenerationError(`OpenAI rejected the request: ${err.message}`, 400);
@@ -51,6 +58,7 @@ function parsedOrThrow<T>(response: ParsedResponse<T>, what: string): T {
 export async function extractWithOpenAI(
   image: { data: Buffer; mimeType: string },
   knownClientNames: string[],
+  forClient?: string,
 ): Promise<Extraction> {
   if (!isSupportedImage(image.mimeType)) {
     throw new GenerationError(`Unsupported image type ${image.mimeType}. Use PNG, JPEG, GIF or WebP.`, 400);
@@ -68,7 +76,7 @@ export async function extractWithOpenAI(
               detail: "high",
               image_url: `data:${image.mimeType};base64,${image.data.toString("base64")}`,
             },
-            { type: "input_text", text: extractPrompt(knownClientNames) },
+            { type: "input_text", text: extractPrompt(knownClientNames, forClient) },
           ],
         },
       ],

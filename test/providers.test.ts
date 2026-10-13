@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveProviders } from "../src/ai/providers.ts";
+import { resolveProviders, withFallback } from "../src/ai/providers.ts";
+import { GenerationError } from "../src/ai/errors.ts";
 import { cleanKey } from "../src/ai/keys.ts";
 
 test("OpenAI key alone: OpenAI handles replies and screenshots", () => {
@@ -32,4 +33,17 @@ test("pasted API keys are cleaned of quotes and whitespace", () => {
   assert.equal(cleanKey("sk-plain"), "sk-plain");
   assert.equal(cleanKey("   "), undefined);
   assert.equal(cleanKey(undefined), undefined);
+});
+
+test("withFallback switches provider on credit, rate-limit or key failures, not on bad requests", async () => {
+  const fail = (status: number) => async () => {
+    throw new GenerationError(`boom ${status}`, status);
+  };
+  const ok = async () => "from backup";
+  assert.equal(await withFallback(fail(429), ok, ["OpenAI", "Claude"])(), "from backup");
+  assert.equal(await withFallback(fail(500), ok, ["Claude", "OpenAI"])(), "from backup");
+  await assert.rejects(withFallback(fail(400), ok, ["OpenAI", "Claude"])(), /boom 400/);
+  await assert.rejects(withFallback(fail(429), fail(502), ["OpenAI", "Claude"])(), /boom 429 Switching to Claude also failed: boom 502/);
+  const only = fail(429);
+  assert.equal(withFallback(only, null, ["OpenAI", "Claude"]), only, "no backup key: no wrapper");
 });

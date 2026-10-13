@@ -44,7 +44,11 @@ The agency runs LinkedIn outreach on behalf of its clients. In every screenshot:
 Read the screenshot carefully and transcribe text exactly. If the client's name isn't visible but a known client name appears anywhere (signature, header, "You" replaced by a name), use it. Don't guess names that aren't in the image.`;
 
 /** The user-turn text that accompanies the screenshot (shared by every provider). */
-export function extractPrompt(knownClientNames: string[]): string {
+export function extractPrompt(knownClientNames: string[], forClient?: string): string {
+  if (forClient) {
+    // The user is already in this client's chat, so there's nothing to identify.
+    return `This screenshot is from our client ${forClient}'s account: ${forClient} sent the outreach and the other person is the prospect. Set client_name and client_match to "${forClient}".\n\nExtract the conversation details from this screenshot.`;
+  }
   const known = knownClientNames.length
     ? `Known clients (use for client_match):\n${knownClientNames.map((n) => `- ${n}`).join("\n")}`
     : "No clients are on file yet, so client_match must be null.";
@@ -54,11 +58,12 @@ export function extractPrompt(knownClientNames: string[]): string {
 export async function extractFromScreenshot(
   image: { data: Buffer; mimeType: string },
   knownClientNames: string[],
+  forClient?: string,
 ): Promise<Extraction> {
   if (!isSupportedImage(image.mimeType)) {
     throw new GenerationError(`Unsupported image type ${image.mimeType}. Use PNG, JPEG, GIF or WebP.`, 400);
   }
-  const known = extractPrompt(knownClientNames);
+  const known = extractPrompt(knownClientNames, forClient);
 
   try {
     const response = await getClient().beta.messages.parse({

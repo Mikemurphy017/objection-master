@@ -251,8 +251,15 @@ export function createApp(
         return res.status(400).json({ error: "Screenshot must be a PNG, JPEG, GIF or WebP image." });
       }
       const clients = await store.listClients();
-      const extraction = await ai.extract({ data: req.file.buffer, mimeType: req.file.mimetype }, clients.map((c) => c.name));
-      const match = matchClient([extraction.client_match, extraction.client_name], clients);
+      // Sent from inside a client's chat: that client is the answer, no name-matching needed.
+      const chatClient = clients.find((c) => c.id === Number(req.body?.clientId));
+      const image = { data: req.file.buffer, mimeType: req.file.mimetype };
+      const extraction = chatClient
+        ? await ai.extract(image, [chatClient.name], chatClient.name)
+        : await ai.extract(image, clients.map((c) => c.name));
+      const match = chatClient
+        ? { client: chatClient, score: 1, candidates: [] }
+        : matchClient([extraction.client_match, extraction.client_name], clients);
       // Keep the screenshot so the chat history can show it next to the replies.
       const imageId = `${crypto.randomBytes(16).toString("hex")}.${IMAGE_EXT[req.file.mimetype]}`;
       await images.save(imageId, req.file.buffer, req.file.mimetype);
@@ -397,6 +404,8 @@ export function createApp(
       return res.status(400).json({ error: err.code === "LIMIT_FILE_SIZE" ? "File is too large (15 MB max)." : err.message });
     }
     if (err instanceof GenerationError) {
+      // Logged so failures (bad keys, no credit, outages) show up in the Railway logs.
+      console.warn(`[ai] ${err.status}: ${err.message}`);
       return res.status(err.status).json({ error: err.message });
     }
     console.error(err);

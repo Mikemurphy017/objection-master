@@ -10,9 +10,11 @@ import { imageBackends, storeBackends, tmpDir } from "./helpers.ts";
 
 let lastGenerateInput: GenerateInput | null = null;
 let extractedName = "Mike Murphy";
+let lastExtractArgs: { names: string[]; forClient?: string } | null = null;
 
 const fakeAi: AiBackend = {
-  async extract() {
+  async extract(_image, names, forClient) {
+    lastExtractArgs = { names, forClient };
     return {
       client_name: extractedName,
       client_match: null,
@@ -157,6 +159,17 @@ for (const combo of combos) describe(`API (${combo.store.name} + ${combo.images.
     const analyzed = await (await fetch(base + "/api/analyze", { method: "POST", body: form })).json();
     assert.equal(analyzed.match.clientId, null);
     assert.ok(analyzed.match.candidates.length >= 1);
+  });
+
+  test("from a client's chat, the screenshot is matched to that client without reading names", async () => {
+    const priya = (await (await fetch(base + "/api/clients")).json()).find((c: { name: string }) => c.name === "Priya Patel");
+    extractedName = "Totally Different Person";
+    const form = new FormData();
+    form.append("screenshot", new Blob([Buffer.from("x")], { type: "image/png" }), "shot.png");
+    form.append("clientId", String(priya.id));
+    const analyzed = await (await fetch(base + "/api/analyze", { method: "POST", body: form })).json();
+    assert.equal(analyzed.match.clientId, priya.id);
+    assert.deepEqual(lastExtractArgs, { names: ["Priya Patel"], forClient: "Priya Patel" });
   });
 
   test("validation errors are readable", async () => {
