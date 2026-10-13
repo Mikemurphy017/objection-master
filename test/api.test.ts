@@ -9,15 +9,12 @@ import type { GenerateInput } from "../src/ai/generate.ts";
 import { imageBackends, storeBackends, tmpDir } from "./helpers.ts";
 
 let lastGenerateInput: GenerateInput | null = null;
-let extractedName = "Mike Murphy";
-let lastExtractArgs: { names: string[]; forClient?: string } | null = null;
+let lastExtractClient: string | null = null;
 
 const fakeAi: AiBackend = {
-  async extract(_image, names, forClient) {
-    lastExtractArgs = { names, forClient };
+  async extract(_image, clientName) {
+    lastExtractClient = clientName;
     return {
-      client_name: extractedName,
-      client_match: null,
       prospect_name: "Dana Lee",
       prospect_headline: "Partner at Lee Wealth",
       objection_text: "We already work with an agency for LinkedIn.",
@@ -65,7 +62,6 @@ for (const combo of combos) describe(`API (${combo.store.name} + ${combo.images.
   });
 
   test("full flow: add client, analyze screenshot, generate, favorite, reuse", async () => {
-    extractedName = "Mike Murphy";
     const created = await post("/api/clients", {
       name: "Michael Murphy",
       aliases: "Mike M., Michael J. Murphy",
@@ -77,11 +73,13 @@ for (const combo of combos) describe(`API (${combo.store.name} + ${combo.images.
     const client = await created.json();
     assert.deepEqual(client.aliases, ["Mike M.", "Michael J. Murphy"]);
 
-    // Analyze: the OCR'd "Mike Murphy" resolves to the stored client.
+    // Analyze from this client's chat: the reader is told whose account it is.
     const form = new FormData();
     form.append("screenshot", new Blob([Buffer.from("fake-png")], { type: "image/png" }), "shot.png");
+    form.append("clientId", String(client.id));
     const analyzed = await (await fetch(base + "/api/analyze", { method: "POST", body: form })).json();
-    assert.equal(analyzed.match.clientId, client.id);
+    assert.equal(analyzed.clientId, client.id);
+    assert.equal(lastExtractClient, "Michael Murphy");
     assert.equal(analyzed.extraction.objection_text, "We already work with an agency for LinkedIn.");
 
     // Generate: client context, core playbook and retrieved excerpts all reach the model.
@@ -151,25 +149,20 @@ for (const combo of combos) describe(`API (${combo.store.name} + ${combo.images.
     assert.equal((await (await fetch(`${base}/api/clients/${client.id}/favorites`)).json()).length, 0);
   });
 
-  test("unmatched client name returns candidates instead of guessing", async () => {
+  test("screenshots always go to the chat's client; without one they're refused", async () => {
     await post("/api/clients", { name: "Priya Patel" });
-    extractedName = "Someone Else";
-    const form = new FormData();
-    form.append("screenshot", new Blob([Buffer.from("x")], { type: "image/png" }), "shot.png");
-    const analyzed = await (await fetch(base + "/api/analyze", { method: "POST", body: form })).json();
-    assert.equal(analyzed.match.clientId, null);
-    assert.ok(analyzed.match.candidates.length >= 1);
-  });
-
-  test("from a client's chat, the screenshot is matched to that client without reading names", async () => {
     const priya = (await (await fetch(base + "/api/clients")).json()).find((c: { name: string }) => c.name === "Priya Patel");
-    extractedName = "Totally Different Person";
-    const form = new FormData();
-    form.append("screenshot", new Blob([Buffer.from("x")], { type: "image/png" }), "shot.png");
-    form.append("clientId", String(priya.id));
-    const analyzed = await (await fetch(base + "/api/analyze", { method: "POST", body: form })).json();
-    assert.equal(analyzed.match.clientId, priya.id);
-    assert.deepEqual(lastExtractArgs, { names: ["Priya Patel"], forClient: "Priya Patel" });
+    const shot = (clientId?: string) => {
+      const form = new FormData();
+      form.append("screenshot", new Blob([Buffer.from("x")], { type: "image/png" }), "shot.png");
+      if (clientId) form.append("clientId", clientId);
+      return fetch(base + "/api/analyze", { method: "POST", body: form });
+    };
+    const analyzed = await (await shot(String(priya.id))).json();
+    assert.equal(analyzed.clientId, priya.id);
+    assert.equal(lastExtractClient, "Priya Patel");
+    assert.equal((await shot()).status, 400, "no client chosen");
+    assert.equal((await shot("999999")).status, 400, "unknown client");
   });
 
   test("validation errors are readable", async () => {

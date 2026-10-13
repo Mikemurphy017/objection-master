@@ -214,7 +214,7 @@ function renderThread() {
     $("#hero-sub").textContent = "Drop a screenshot or type what the prospect said. Replies are tuned to this client's voice.";
   } else {
     $("#hero-title").textContent = "What objection are we handling?";
-    $("#hero-sub").textContent = "Drop a screenshot of the LinkedIn reply and the three replies come back. The client is picked up automatically.";
+    $("#hero-sub").textContent = "Open a client from the list (or choose one below), then drop a screenshot of their LinkedIn conversation. Replies use only that client's info.";
   }
   thread.replaceChildren(...state.turns.map(turnView));
   scrollToBottom();
@@ -371,7 +371,7 @@ function renderComposerClients() {
   if (inClient) return;
   const current = select.value;
   select.replaceChildren(
-    el("option", { value: "" }, "Client: auto-detect"),
+    el("option", { value: "" }, "Choose a client…"),
     ...state.clients.map((c) => el("option", { value: c.id }, c.name)),
   );
   select.value = state.clients.some((c) => String(c.id) === current) ? current : "";
@@ -413,6 +413,13 @@ async function sendScreenshots(files) {
   if (!images.length) return toast("Drop a screenshot image (PNG, JPEG, GIF or WebP).");
   if (!$("#view-chat").classList.contains("active")) {
     location.hash = "#/new";
+    await route();
+  }
+  // Screenshots are always answered for one client's chat; in New chat, ask which first.
+  const chosen = state.route.view === "client" ? state.route.clientId : Number($("#composer-client").value) || null;
+  if (!chosen) return askWhichClient(images);
+  if (state.route.view !== "client") {
+    location.hash = `#/client/${chosen}`;
     await route();
   }
   const draining = sendQueue.length > 0 || state.busy;
@@ -534,11 +541,15 @@ async function sendComposer() {
 
   if (attachment) {
     // With a screenshot, anything typed alongside it is treated as a steer.
+    if (!chosenClientId) {
+      URL.revokeObjectURL(attachment.url);
+      return askWhichClient([attachment.file]);
+    }
     await runScreenshot(attachment, chosenClientId, [steer, text].filter(Boolean).join(". "));
     URL.revokeObjectURL(attachment.url);
   } else {
     if (!chosenClientId) {
-      liveTurn({ objection: text }).fail("Pick the client from the selector next to ＋, or attach a screenshot so it can be detected.");
+      liveTurn({ objection: text }).fail("Choose the client first: open their chat from the list, or pick them in the selector next to ＋.");
       return;
     }
     await runTurn({
@@ -585,70 +596,81 @@ function liveTurn(bubble) {
   };
 }
 
-async function runScreenshot(attachment, chosenClientId, guidance) {
+async function runScreenshot(attachment, clientId, guidance) {
   state.busy = true;
   const live = liveTurn({ imageUrl: attachment.url, guidance });
-  // In a client's chat (or with a client picked) there's nothing to match.
-  live.steps(chosenClientId ? ["Reading screenshot", "Writing three replies"] : ["Reading screenshot", "Matching client", "Writing three replies"]);
+  live.steps(["Reading screenshot", "Writing three replies"]);
   live.set("Reading screenshot", "active");
   try {
     const form = new FormData();
     form.append("screenshot", attachment.file);
-    if (chosenClientId) form.append("clientId", String(chosenClientId));
-    const { extraction, match, imageId } = await api("/api/analyze", { method: "POST", body: form });
-    live.set("Reading screenshot", "done");
-
-    const ctx = {
+    form.append("clientId", String(clientId));
+    const { extraction, imageId } = await api("/api/analyze", { method: "POST", body: form });
+    if (extraction.notes) toast(extraction.notes);
+    live.remove();
+    state.busy = false;
+    await runTurn({
+      clientId,
       objection: extraction.objection_text,
       threadContext: extraction.thread_context,
       prospect: [extraction.prospect_name, extraction.prospect_headline].filter(Boolean).join(" - "),
       imageId,
       guidance,
       channel: extraction.channel,
-    };
-    if (extraction.notes) toast(extraction.notes);
-
-    // The open chat (or an explicit pick) always wins; otherwise use the detected client.
-    const clientId = chosenClientId ?? match.clientId;
-
-    if (!clientId) {
-      state.busy = false;
-      live.replace(pickClientNotice(extraction, match, (id) => (live.remove(), runTurn({ ...ctx, clientId: id }))));
-      return;
-    }
-    live.set("Matching client", "done");
-    live.remove();
-    state.busy = false;
-    await runTurn({ ...ctx, clientId });
+    });
   } catch (err) {
     state.busy = false;
     live.fail(`${err.message} You can also type the objection instead.`);
   }
 }
 
-function pickClientNotice(extraction, match, onPick) {
+/** New chat with no client chosen: ask which client these screenshots belong to, then continue in that chat. */
+function askWhichClient(files) {
+  $("#hero").hidden = true;
+  $("#view-chat").classList.remove("is-empty");
   const select = el(
     "select",
     {},
     el("option", { value: "" }, "Choose a client…"),
-    ...state.clients.map((c) => el("option", { value: c.id }, c.name)),
+    ...state.clients.map((c) => el("option", { value: c.id }, c.company ? `${c.name} (${c.company})` : c.name)),
   );
-  const top = match.candidates.find((c) => c.score >= 0.5);
-  if (top) select.value = top.id;
-  const seen = extraction.client_name ? `I read "${extraction.client_name}" as the sender, but that` : "I couldn't see the client's name, so this";
-  return el(
+  const notice = el(
     "div",
-    { class: "notice" },
-    el("div", {}, state.clients.length ? `${seen} doesn't match a client on file. Whose conversation is it?` : "There are no clients on file yet. Add one under Manage clients first."),
-    extraction.objection_text && el("div", { class: "muted small" }, `Objection: “${extraction.objection_text}”`),
-    state.clients.length &&
+    { class: "turn live" },
+    el(
+      "div",
+      { class: "notice" },
       el(
         "div",
-        { class: "row" },
-        select,
-        el("button", { class: "primary", onclick: () => select.value && onPick(Number(select.value)) }, "Write replies"),
+        {},
+        state.clients.length
+          ? `Which client is ${files.length === 1 ? "this screenshot" : `are these ${files.length} screenshots`} for? Replies use only that client's info.`
+          : "Add a client under Manage clients first, then drop the screenshot into their chat.",
       ),
+      state.clients.length > 0 &&
+        el(
+          "div",
+          { class: "row" },
+          select,
+          el(
+            "button",
+            {
+              class: "primary",
+              onclick: async () => {
+                if (!select.value) return select.focus();
+                notice.remove();
+                $("#composer-client").value = select.value;
+                await sendScreenshots(files);
+              },
+            },
+            "Continue",
+          ),
+        ),
+    ),
   );
+  $("#thread").append(notice);
+  scrollToBottom();
+  select.focus();
 }
 
 async function runTurn(ctx) {

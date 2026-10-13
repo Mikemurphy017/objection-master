@@ -57,8 +57,7 @@ function parsedOrThrow<T>(response: ParsedResponse<T>, what: string): T {
 
 export async function extractWithOpenAI(
   image: { data: Buffer; mimeType: string },
-  knownClientNames: string[],
-  forClient?: string,
+  clientName: string,
 ): Promise<Extraction> {
   if (!isSupportedImage(image.mimeType)) {
     throw new GenerationError(`Unsupported image type ${image.mimeType}. Use PNG, JPEG, GIF or WebP.`, 400);
@@ -76,7 +75,7 @@ export async function extractWithOpenAI(
               detail: "high",
               image_url: `data:${image.mimeType};base64,${image.data.toString("base64")}`,
             },
-            { type: "input_text", text: extractPrompt(knownClientNames, forClient) },
+            { type: "input_text", text: extractPrompt(clientName) },
           ],
         },
       ],

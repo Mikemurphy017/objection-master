@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { STRATEGIES, type ClientInput, type Store } from "./db.ts";
 import { FsImageStore, type ImageStore } from "./images.ts";
-import { matchClient } from "./match.ts";
 import { Bm25Index, retrieveExcerpts } from "./corpus/retrieval.ts";
 import { parseFile } from "./corpus/ingest.ts";
 import { extractFromScreenshot, isSupportedImage } from "./ai/extract.ts";
@@ -250,25 +249,14 @@ export function createApp(
       if (!isSupportedImage(req.file.mimetype)) {
         return res.status(400).json({ error: "Screenshot must be a PNG, JPEG, GIF or WebP image." });
       }
-      const clients = await store.listClients();
-      // Sent from inside a client's chat: that client is the answer, no name-matching needed.
-      const chatClient = clients.find((c) => c.id === Number(req.body?.clientId));
-      const image = { data: req.file.buffer, mimeType: req.file.mimetype };
-      const extraction = chatClient
-        ? await ai.extract(image, [chatClient.name], chatClient.name)
-        : await ai.extract(image, clients.map((c) => c.name));
-      const match = chatClient
-        ? { client: chatClient, score: 1, candidates: [] }
-        : matchClient([extraction.client_match, extraction.client_name], clients);
+      // Screenshots are always answered for the client whose chat they were dropped into.
+      const client = await store.getClient(Number(req.body?.clientId));
+      if (!client) return res.status(400).json({ error: "Open a client's chat (or pick a client) before adding a screenshot." });
+      const extraction = await ai.extract({ data: req.file.buffer, mimeType: req.file.mimetype }, client.name);
       // Keep the screenshot so the chat history can show it next to the replies.
       const imageId = `${crypto.randomBytes(16).toString("hex")}.${IMAGE_EXT[req.file.mimetype]}`;
       await images.save(imageId, req.file.buffer, req.file.mimetype);
-      res.json({
-        imageId,
-        extraction,
-        match: { clientId: match.client?.id ?? null, score: match.score, candidates: match.candidates },
-        favorites: match.client ? await store.listFavorites(match.client.id, 20) : [],
-      });
+      res.json({ imageId, extraction, clientId: client.id });
     }),
   );
 

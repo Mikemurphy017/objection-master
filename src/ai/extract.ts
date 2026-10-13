@@ -3,14 +3,6 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { FALLBACK_PARAMS, GenerationError, MODEL, describeApiError, getClient } from "./claude.ts";
 
 export const ExtractionSchema = z.object({
-  client_name: z
-    .string()
-    .nullable()
-    .describe("Name of OUR client: the account owner who sent the outreach (their messages are on the sending side)."),
-  client_match: z
-    .string()
-    .nullable()
-    .describe("If client_name corresponds to one of the known client names provided, that exact known name; else null."),
   prospect_name: z.string().nullable().describe("Full name of the prospect who wrote the objection."),
   prospect_headline: z
     .string()
@@ -35,35 +27,26 @@ export function isSupportedImage(mime: string): mime is ImageType {
   return (SUPPORTED as readonly string[]).includes(mime);
 }
 
-export const EXTRACT_SYSTEM = `You read screenshots of sales conversations (usually LinkedIn messaging, sometimes email) for an outbound agency.
+export const EXTRACT_SYSTEM = `You read screenshots of sales conversations (usually LinkedIn messaging, sometimes email) for an outbound agency that runs outreach on behalf of its clients.
 
-The agency runs LinkedIn outreach on behalf of its clients. In every screenshot:
-- OUR CLIENT is the account owner: the person who sent the outreach. On LinkedIn their messages usually sit under their own name/photo and the conversation header shows the OTHER person's name. In email, they're the original sender.
-- THE PROSPECT is the person who replied with an objection, brush-off, question or pushback.
+You're told which client's account the screenshot comes from. That client sent the outreach; the other person in the conversation is the prospect, who replied with an objection, brush-off, question or pushback. On LinkedIn the client's own messages usually sit on the sending side, and the conversation header shows the prospect's name.
 
-Read the screenshot carefully and transcribe text exactly. If the client's name isn't visible but a known client name appears anywhere (signature, header, "You" replaced by a name), use it. Don't guess names that aren't in the image.`;
+Transcribe the conversation exactly. Don't guess anything that isn't in the image.`;
 
 /** The user-turn text that accompanies the screenshot (shared by every provider). */
-export function extractPrompt(knownClientNames: string[], forClient?: string): string {
-  if (forClient) {
-    // The user is already in this client's chat, so there's nothing to identify.
-    return `This screenshot is from our client ${forClient}'s account: ${forClient} sent the outreach and the other person is the prospect. Set client_name and client_match to "${forClient}".\n\nExtract the conversation details from this screenshot.`;
-  }
-  const known = knownClientNames.length
-    ? `Known clients (use for client_match):\n${knownClientNames.map((n) => `- ${n}`).join("\n")}`
-    : "No clients are on file yet, so client_match must be null.";
-  return `${known}\n\nExtract the conversation details from this screenshot.`;
+export function extractPrompt(clientName: string): string {
+  return `This screenshot is from our client ${clientName}'s account: ${clientName} sent the outreach and the other person is the prospect.\n\nExtract the conversation details from this screenshot.`;
 }
 
 export async function extractFromScreenshot(
   image: { data: Buffer; mimeType: string },
-  knownClientNames: string[],
-  forClient?: string,
+  /** The client whose chat the screenshot was dropped into. */
+  clientName: string,
 ): Promise<Extraction> {
   if (!isSupportedImage(image.mimeType)) {
     throw new GenerationError(`Unsupported image type ${image.mimeType}. Use PNG, JPEG, GIF or WebP.`, 400);
   }
-  const known = extractPrompt(knownClientNames, forClient);
+  const known = extractPrompt(clientName);
 
   try {
     const response = await getClient().beta.messages.parse({
