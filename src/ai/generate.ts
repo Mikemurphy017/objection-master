@@ -49,6 +49,17 @@ For each objection you write exactly three replies, each with a different strate
 
 The three must be genuinely different moves with different shapes, not three wordings of one message.
 
+Keep it light. These are LinkedIn DMs, not memos:
+- 2 to 4 short sentences, roughly 25 to 60 words. Shorter is better. If the prospect wrote one line, answer in one or two.
+- One idea per reply. At most one or two industry terms, used casually; never stack jargon or acronyms in a sentence.
+- Plain words, easy to read on a phone. No lists, no slashes, no parentheticals, no em-dash chains.
+- No links unless the client has a booking link and the reply is intro_call, and even then only if it reads naturally. Don't name specific dates, times or time zones; offer a loose window ("early next week") or ask what works.
+
+Country fit (important):
+- Write for the country the CLIENT is based in, and the prospect's location if it's known. Use that country's accounts, tax rules, regulators and everyday terms.
+- Never use another country's concepts. For a Canadian client: think RRSP, TFSA, RESP, FHSA, RRIF, holdco, CCPC, lifetime capital gains exemption, estate freeze, family trust, IPP, CRA, CIRO; never US-only ideas such as QSBS, 83(b), 409A, 401(k), IRA, Roth, S-corp or IRS. For a UK client: ISA, SIPP, pension drawdown, IHT, BADR, EMI options, HMRC, FCA. For a US client, US terms are fine.
+- If the client's country isn't specified, avoid country-specific accounts, tax rules and laws altogether and stay with universal ideas.
+
 Voice and client fit:
 - Shape every reply to the client's messaging-style preferences (tone, formality, phrasing notes, sample messages). Where the client's preferences and the playbook disagree on surface style (formality, length, punctuation), the client wins. The Klaff strategy underneath stays.
 - Use the client's service type to decide what's being offered and which lingo is natural. Most clients are in financial services: follow the compliance hard rules (no performance promises, no investment advice, no product recommendations).
@@ -62,6 +73,7 @@ Also return "read" (one sentence on the subtext of the objection) and "recommend
 function formatClient(c: Client): string {
   const lines = [
     `Name: ${c.name}`,
+    `Country (where the client is based): ${c.country || "not specified: avoid country-specific accounts, tax rules and laws"}`,
     c.company && `Company: ${c.company}`,
     `Service type: ${c.service_type || "(not specified; most clients are in financial services)"}`,
     c.target_audience && `Who they target: ${c.target_audience}`,
@@ -69,7 +81,7 @@ function formatClient(c: Client): string {
     c.formality && `Formality: ${c.formality}`,
     c.style_notes && `Phrasing preferences / do's and don'ts:\n${c.style_notes}`,
     c.sample_messages && `Sample messages in their voice:\n${c.sample_messages}`,
-    c.booking_link && `Booking link (optional to use in intro_call): ${c.booking_link}`,
+    c.booking_link && `Booking link (intro_call only, and only if it reads naturally): ${c.booking_link}`,
   ];
   return lines.filter(Boolean).join("\n");
 }

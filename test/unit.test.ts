@@ -17,6 +17,7 @@ const client = (id: number, name: string, extra: Partial<Client> = {}): Client =
   style_notes: "",
   sample_messages: "",
   booking_link: "",
+  country: "",
   created_at: "",
   updated_at: "",
   ...extra,

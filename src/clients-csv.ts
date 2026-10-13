@@ -13,6 +13,7 @@ export const IMPORT_FIELDS = [
   "style_notes",
   "sample_messages",
   "booking_link",
+  "country",
 ] as const;
 type Field = (typeof IMPORT_FIELDS)[number];
 
@@ -27,6 +28,7 @@ const HEADER_ALIASES: Record<Field, string[]> = {
   formality: ["formality", "formality level", "register"],
   style_notes: ["style notes", "notes", "messaging notes", "phrasing", "phrasing preferences", "dos and donts", "do and dont", "preferences", "messaging preferences", "messaging style", "guidelines"],
   sample_messages: ["sample messages", "sample message", "examples", "example messages", "sample copy", "messages"],
+  country: ["country", "location", "based in", "region", "nation", "country of residence", "market"],
   booking_link: ["booking link", "booking", "calendly", "calendly link", "calendar link", "scheduling link", "meeting link", "book a call", "booking url", "calendar"],
 };
 
@@ -96,6 +98,7 @@ const emptyClient = (): ClientInput => ({
   style_notes: "",
   sample_messages: "",
   booking_link: "",
+  country: "",
 });
 
 const isBlank = (c: ClientInput | Client, f: Field) => (f === "aliases" ? c.aliases.length === 0 : !String(c[f]).trim());

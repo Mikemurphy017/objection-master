@@ -9,7 +9,7 @@ import { tmpDir } from "./helpers.ts";
 
 const stored = (id: number, name: string, extra: Partial<Client> = {}): Client => ({
   id, name, aliases: [], company: "", service_type: "", target_audience: "", tone: "", formality: "",
-  style_notes: "", sample_messages: "", booking_link: "", created_at: "", updated_at: "", ...extra,
+  style_notes: "", sample_messages: "", booking_link: "", country: "", created_at: "", updated_at: "", ...extra,
 });
 
 test("parseCsv handles quotes, embedded commas/newlines, CRLF, BOM and semicolons", () => {
@@ -43,7 +43,7 @@ test("planImport maps common headers, leaves the rest blank, and flags what's mi
   assert.equal(jane.client.formality, "Casual", "normalised to the dropdown's spelling");
   assert.equal(jane.client.booking_link, "https://calendly.com/jane");
   assert.equal(jane.client.tone, "", "columns the CSV doesn't have stay blank");
-  assert.deepEqual(jane.missing, ["target_audience", "tone", "style_notes", "sample_messages"]);
+  assert.deepEqual(jane.missing, ["target_audience", "tone", "style_notes", "sample_messages", "country"]);
 
   assert.equal(noName.status, "invalid");
   assert.equal(mike.status, "existing", "nickname matches the stored client");
@@ -51,6 +51,12 @@ test("planImport maps common headers, leaves the rest blank, and flags what's mi
   assert.deepEqual(mike.fillable, ["company"]);
   assert.equal(dup.status, "duplicate");
   assert.deepEqual(plan.counts, { new: 1, existing: 1, duplicate: 1, invalid: 1 });
+});
+
+test("planImport reads a country column", () => {
+  const plan = planImport("Name,Based in\nRachelle Allen,Canada\n", []);
+  assert.equal(plan.columns[1].field, "country");
+  assert.equal(plan.rows[0].client.country, "Canada");
 });
 
 test("planImport combines first and last name columns and rejects files without names", () => {

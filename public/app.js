@@ -147,7 +147,7 @@ function renderHeader() {
   const titles = { new: "New chat", clients: "Manage clients", library: "Klaff library" };
   $("#head-name").textContent = view === "client" ? client.name : titles[view];
   $("#head-sub").textContent =
-    view === "client" ? [client.company, client.service_type].filter(Boolean).join(" · ") : "";
+    view === "client" ? [client.company, client.country, client.service_type].filter(Boolean).join(" · ") : "";
   $("#head-actions").hidden = view !== "client";
   $("#saved-count").textContent = state.favorites.length || "";
 }
@@ -260,7 +260,14 @@ function turnView(turn) {
       el(
         "div",
         { class: "turn-foot" },
-        el("span", { class: "sources" }, turn.sources?.length ? `Drew on: ${[...new Set(turn.sources.map((s) => s.section))].join(" · ")}` : ""),
+        turn.sources?.length
+          ? el(
+              "details",
+              { class: "sources" },
+              el("summary", {}, "Klaff sources used"),
+              el("div", {}, [...new Set(turn.sources.map((s) => s.section.replace(/^\d+\s+/, "")))].join(" · ")),
+            )
+          : el("span", { class: "sources" }),
         el("button", { class: "ghost", onclick: () => regenerate(turn) }, "↻ Regenerate"),
         el("button", { class: "ghost", onclick: () => editTurn(turn) }, "✎ Edit"),
         el("button", { class: "ghost", onclick: () => deleteTurn(turn) }, "Delete"),
@@ -305,15 +312,20 @@ function optionCard(turn, goal, option, recommended) {
       "div",
       { class: "option-head" },
       el("span", { class: "goal" }, GOALS[goal]),
-      el("span", { class: `badge${recommended ? " rec" : ""}` }, recommended ? "Send this" : option.label),
+      el("span", { class: "badge" }, option.label),
+      recommended && el("span", { class: "badge rec" }, "★ Send this"),
     ),
     message,
-    el("p", { class: "why" }, option.why),
     el(
       "div",
-      { class: "option-actions" },
-      el("button", { class: "primary", onclick: () => copyText(message.innerText.trim()) }, "Copy"),
-      saveBtn,
+      { class: "option-foot" },
+      el("p", { class: "why" }, option.why),
+      el(
+        "div",
+        { class: "option-actions" },
+        el("button", { class: "primary", onclick: () => copyText(message.innerText.trim()) }, "Copy"),
+        saveBtn,
+      ),
     ),
   );
 }
@@ -613,7 +625,10 @@ async function runScreenshot(attachment, clientId, guidance) {
       clientId,
       objection: extraction.objection_text,
       threadContext: extraction.thread_context,
-      prospect: [extraction.prospect_name, extraction.prospect_headline].filter(Boolean).join(" - "),
+      prospect: [
+        extraction.prospect_name,
+        [extraction.prospect_headline, extraction.prospect_location && `based in ${extraction.prospect_location}`].filter(Boolean).join(", "),
+      ].filter(Boolean).join(" - "),
       imageId,
       guidance,
       channel: extraction.channel,
@@ -787,9 +802,10 @@ const FIELD_LABELS = {
   style_notes: "Style notes",
   sample_messages: "Sample messages",
   booking_link: "Booking link",
+  country: "Country",
 };
 /** The details that shape replies most; a client missing any of these is flagged for account managers. */
-const KEY_FIELDS = ["service_type", "target_audience", "tone", "style_notes"];
+const KEY_FIELDS = ["country", "service_type", "target_audience", "tone", "style_notes"];
 const missingKey = (c) => KEY_FIELDS.filter((f) => !String(c[f] ?? "").trim());
 
 function renderClientList() {

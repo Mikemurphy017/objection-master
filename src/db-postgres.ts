@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS auth_tokens_user ON auth_tokens(user_id, kind);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT '';
 `;
 
 /** Arbitrary constant for pg_advisory_xact_lock, so parallel replicas don't race on CREATE TABLE. */
@@ -200,8 +201,8 @@ export class PostgresStore implements Store {
   async createClient(input: ClientInput): Promise<Client> {
     return (await this.row<Client>(
       `INSERT INTO clients (name, aliases, company, service_type, target_audience, tone, formality,
-         style_notes, sample_messages, booking_link)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+         style_notes, sample_messages, booking_link, country)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       clientParams(input),
     ))!;
   }
@@ -209,9 +210,9 @@ export class PostgresStore implements Store {
   updateClient(id: number, input: ClientInput): Promise<Client | undefined> {
     return this.row(
       `UPDATE clients SET name = $1, aliases = $2, company = $3, service_type = $4, target_audience = $5,
-         tone = $6, formality = $7, style_notes = $8, sample_messages = $9, booking_link = $10,
+         tone = $6, formality = $7, style_notes = $8, sample_messages = $9, booking_link = $10, country = $11,
          updated_at = now()
-       WHERE id = $11 RETURNING *`,
+       WHERE id = $12 RETURNING *`,
       [...clientParams(input), id],
     );
   }
@@ -429,6 +430,7 @@ function clientParams(input: ClientInput): unknown[] {
     input.style_notes,
     input.sample_messages,
     input.booking_link,
+    input.country ?? "",
   ];
 }
 

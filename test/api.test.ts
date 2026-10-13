@@ -17,6 +17,7 @@ const fakeAi: AiBackend = {
     return {
       prospect_name: "Dana Lee",
       prospect_headline: "Partner at Lee Wealth",
+      prospect_location: "Toronto, Canada",
       objection_text: "We already work with an agency for LinkedIn.",
       thread_context: "Michael Murphy: Saw your post on RSU planning...",
       channel: "linkedin" as const,

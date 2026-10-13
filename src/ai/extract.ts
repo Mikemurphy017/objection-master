@@ -8,6 +8,10 @@ export const ExtractionSchema = z.object({
     .string()
     .nullable()
     .describe("Prospect title, firm or headline if visible in the screenshot."),
+  prospect_location: z
+    .string()
+    .nullable()
+    .describe("Where the prospect is based (city/country or time zone shown), if visible in the screenshot; else null."),
   objection_text: z
     .string()
     .describe("The prospect's most recent message(s), transcribed verbatim. This is the objection to answer."),

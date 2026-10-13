@@ -118,6 +118,17 @@
               <label>Company
                 <input name="company" />
               </label>
+              <label>Country (where they're based)
+                <input name="country" list="countries" placeholder="e.g. Canada" />
+                <datalist id="countries">
+                  <option value="Canada"></option>
+                  <option value="United States"></option>
+                  <option value="United Kingdom"></option>
+                  <option value="Australia"></option>
+                  <option value="New Zealand"></option>
+                  <option value="Ireland"></option>
+                </datalist>
+              </label>
               <label>Service type
                 <input name="service_type" list="service-types" placeholder="e.g. Wealth management for business owners" />
                 <datalist id="service-types">

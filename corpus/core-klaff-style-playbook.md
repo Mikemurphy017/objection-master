@@ -82,7 +82,7 @@ Use two or three of these per reply, not all of them:
 4. A question they have to think about to answer, ideally about their own numbers, pipeline or clients.
 5. A light, optional next step, or none if the question is doing the work.
 
-Length: on LinkedIn, 3 to 5 sentences, roughly 50 to 110 words. Email can run 80 to 150. If the prospect wrote one terse line, go a touch shorter (2 to 3 sentences) but keep one piece of lingo and one hook. A flat "no" or "stop messaging me" gets one graceful line.
+Length: on LinkedIn, 2 to 4 short sentences, roughly 25 to 60 words; shorter usually wins. Email can run 60 to 120. One idea per reply, and at most one or two industry terms. If the prospect wrote one terse line, answer in one or two. A flat "no" or "stop messaging me" gets one graceful line.
 
 ## Reading the objection
 
@@ -100,9 +100,9 @@ Length: on LinkedIn, 3 to 5 sentences, roughly 50 to 110 words. Email can run 80
 
 ## Industry lingo banks
 
-Use the vocabulary of the *prospect's* world, one to three terms per reply, used precisely and casually, never explained, never stacked.
+Use the vocabulary of the *prospect's* world, one or two terms per reply, used precisely and casually, never explained, never stacked. **Match the country.** Accounts, tax rules and regulators differ by country: a Canadian prospect has never heard of QSBS or a 401(k), and a US prospect doesn't have a TFSA. Use the bank for the client's (and prospect's) country.
 
-**Financial advisors / RIAs / wealth teams**: AUM, net new assets, households, $2M+ liquid, ideal client profile, COI relationships, CPA and estate attorney referrals, referral drought, book of business, breakaway, wirehouse vs. independent, compliance pre-approval, pre-retirees, rollover, pension lump-sum decision, liquidity event, concentrated stock position, RSUs and ISOs, vesting cliff, 10b5-1 plan, QSBS, exit planning, tax-loss harvesting, Roth conversion window.
+**Financial advisors / RIAs / wealth teams (US)**: AUM, net new assets, households, $2M+ liquid, ideal client profile, COI relationships, CPA and estate attorney referrals, referral drought, book of business, breakaway, wirehouse vs. independent, compliance pre-approval, pre-retirees, rollover, pension lump-sum decision, liquidity event, concentrated stock position, RSUs and ISOs, vesting cliff, 10b5-1 plan, QSBS, exit planning, tax-loss harvesting, Roth conversion window.
 
 **M&A advisors, bankers, business brokers**: sell-side / buy-side mandates, deal flow, proprietary deals, LOI, IOI, quality of earnings, EBITDA multiple, add-backs, working capital peg, earnout, seller note, rollover equity, platform vs. add-on, lower middle market, founder-owned, succession gap.
 
@@ -110,7 +110,11 @@ Use the vocabulary of the *prospect's* world, one to three terms per reply, used
 
 **Business owners, executives, professionals** (often the prospect when the client is an advisor): exit window, valuation multiple, key-person risk, deferred comp, NQDC, equity grants, double-trigger acceleration, tender offer, concentrated position, partnership buy-in/buyout, practice valuation, succession, tax drag, liquidity event.
 
-**Federal employees**: FERS, TSP, high-3, MRA, FEGLI, deferred retirement.
+**Canada (advisors, business owners, executives)**: RRSP, TFSA, RESP, FHSA, RRIF, holdco, CCPC, lifetime capital gains exemption (LCGE), estate freeze, family trust, IPP (individual pension plan), corporate-class investing, dividend vs. salary mix, CPP/OAS timing, OAS clawback, commuted value of a pension, stock options at a CCPC, CRA, CIRO, IIROC/MFDA legacy, bank-owned dealers vs. independents, book of business, AUM.
+
+**United Kingdom**: ISA, SIPP, pension drawdown, defined benefit transfer, annual allowance, IHT, business relief, BADR (business asset disposal relief), EMI options, growth shares, salary sacrifice, HMRC, FCA, Consumer Duty, IFA vs. restricted adviser.
+
+**US federal employees**: FERS, TSP, high-3, MRA, FEGLI, deferred retirement.
 
 Other niches: pull the equivalent terms from that industry the same way.
 
