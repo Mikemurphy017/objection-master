@@ -206,10 +206,10 @@ function renderThread() {
   $("#hero").hidden = !empty;
   if (client) {
     $("#hero-title").textContent = `Handling an objection for ${client.name.split(" ")[0]}?`;
-    $("#hero-sub").textContent = "Paste a screenshot or type what the prospect said. Replies are tuned to this client's voice.";
+    $("#hero-sub").textContent = "Drop a screenshot or type what the prospect said. Replies are tuned to this client's voice.";
   } else {
     $("#hero-title").textContent = "What objection are we handling?";
-    $("#hero-sub").textContent = "Paste or drop a screenshot of the LinkedIn reply. The client is picked up automatically.";
+    $("#hero-sub").textContent = "Drop a screenshot of the LinkedIn reply and the three replies come back. The client is picked up automatically.";
   }
   thread.replaceChildren(...state.turns.map(turnView));
   scrollToBottom();
@@ -398,6 +398,28 @@ async function attach(file) {
   textarea.focus();
 }
 
+/**
+ * Drop, paste or pick screenshots and they go straight in: no extra click.
+ * Several at once are handled one after another, each as its own turn.
+ */
+const sendQueue = [];
+async function sendScreenshots(files) {
+  const images = [...files].filter((f) => f && f.type.startsWith("image/"));
+  if (!images.length) return toast("Drop a screenshot image (PNG, JPEG, GIF or WebP).");
+  if (!$("#view-chat").classList.contains("active")) {
+    location.hash = "#/new";
+    await route();
+  }
+  const draining = sendQueue.length > 0 || state.busy;
+  sendQueue.push(...images);
+  if (draining) return toast(`Queued ${images.length} screenshot${images.length === 1 ? "" : "s"}; they'll go once the current one is done.`);
+  while (sendQueue.length) {
+    while (state.busy) await new Promise((r) => setTimeout(r, 200));
+    await attach(sendQueue.shift());
+    await sendComposer();
+  }
+}
+
 function clearAttachment() {
   if (state.attachment) URL.revokeObjectURL(state.attachment.url);
   state.attachment = null;
@@ -431,39 +453,57 @@ function renderAttachments() {
 }
 
 $("#attach-btn").addEventListener("click", () => fileInput.click());
+$("#hero-drop").addEventListener("click", () => fileInput.click());
+$("#hero-drop").addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && fileInput.click());
 fileInput.addEventListener("change", () => {
-  if (fileInput.files[0]) attach(fileInput.files[0]);
+  const files = [...fileInput.files];
   fileInput.value = "";
+  sendScreenshots(files);
 });
 document.addEventListener("paste", (e) => {
   if (!$("#view-chat").classList.contains("active")) return;
-  const item = [...e.clipboardData.items].find((i) => i.type.startsWith("image/"));
-  if (item) {
+  const files = [...e.clipboardData.items].filter((i) => i.type.startsWith("image/")).map((i) => i.getAsFile());
+  if (files.length) {
     e.preventDefault();
-    attach(item.getAsFile());
+    sendScreenshots(files);
   }
 });
-const chatView = $("#view-chat");
+
+// Drag and drop works anywhere in the app (not just the chat), and never lets
+// the browser navigate away to show the dropped image. The library page keeps
+// its own document upload, so drops there are left alone.
+const dropOverlay = $("#drop-overlay");
+const draggingFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes("Files");
+const dropIgnored = () => $("#view-library").classList.contains("active");
 let dragDepth = 0;
-chatView.addEventListener("dragenter", (e) => {
-  if (![...e.dataTransfer.types].includes("Files")) return;
+window.addEventListener("dragenter", (e) => {
+  if (!draggingFiles(e) || dropIgnored()) return;
   dragDepth++;
-  $("#drop-overlay").hidden = false;
+  dropOverlay.hidden = false;
 });
-chatView.addEventListener("dragleave", () => {
-  if (--dragDepth <= 0) ($("#drop-overlay").hidden = true), (dragDepth = 0);
+window.addEventListener("dragleave", (e) => {
+  if (!draggingFiles(e) || dropIgnored()) return;
+  if (--dragDepth <= 0) (dropOverlay.hidden = true), (dragDepth = 0);
 });
-chatView.addEventListener("dragover", (e) => e.preventDefault());
-chatView.addEventListener("drop", (e) => {
+window.addEventListener("dragover", (e) => {
+  if (!draggingFiles(e) || dropIgnored()) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+});
+window.addEventListener("drop", (e) => {
+  if (!draggingFiles(e) || dropIgnored()) return;
   e.preventDefault();
   dragDepth = 0;
-  $("#drop-overlay").hidden = true;
-  const file = [...e.dataTransfer.files].find((f) => f.type.startsWith("image/"));
-  if (file) attach(file);
+  dropOverlay.hidden = true;
+  sendScreenshots(e.dataTransfer.files);
 });
 
-$("#composer").addEventListener("submit", async (e) => {
+$("#composer").addEventListener("submit", (e) => {
   e.preventDefault();
+  sendComposer();
+});
+
+async function sendComposer() {
   if (state.busy) return;
   const text = textarea.value.trim();
   const steer = $("#composer-steer").value.trim();
@@ -498,7 +538,7 @@ $("#composer").addEventListener("submit", async (e) => {
       guidance: steer,
     });
   }
-});
+}
 
 // ================================================================ the pipeline, as a live chat turn
 

@@ -41,7 +41,12 @@
       <div id="chat-scroll" class="chat-scroll">
         <div id="hero" class="hero">
           <h2 id="hero-title">What objection are we handling?</h2>
-          <p id="hero-sub" class="muted">Paste or drop a screenshot of the LinkedIn reply. The client is picked up automatically.</p>
+          <p id="hero-sub" class="muted">Drop a screenshot of the LinkedIn reply and the three replies come back. The client is picked up automatically.</p>
+          <div id="hero-drop" class="hero-drop" role="button" tabindex="0">
+            <div class="hero-drop-icon" aria-hidden="true">⇪</div>
+            <div class="hero-drop-title">Drag &amp; drop screenshots here</div>
+            <div class="muted small">or paste with Ctrl/⌘+V · several at once is fine</div>
+          </div>
         </div>
         <div id="thread" class="thread"></div>
       </div>
@@ -59,9 +64,8 @@
           <button type="submit" class="send-btn" id="send-btn" aria-label="Write replies" title="Write replies">↑</button>
         </div>
       </form>
-      <p class="composer-hint muted small">Enter to send · Shift+Enter for a new line · drop an image anywhere</p>
+      <p class="composer-hint muted small">Drop or paste a screenshot anywhere to get replies instantly · Enter sends typed text</p>
       </div>
-      <div id="drop-overlay" class="drop-overlay" hidden><div>Drop the screenshot</div></div>
     </section>
 
     <!-- ===== Saved replies drawer ===== -->
@@ -175,6 +179,7 @@
   </main>
 </div>
 
+<div id="drop-overlay" class="drop-overlay" hidden><div>Drop to write replies</div></div>
 <div id="toast" class="toast" hidden></div>
 <script src="app.js" type="module"></script>
 </body>
