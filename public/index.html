@@ -95,14 +95,19 @@
         <div class="card">
           <div class="row between">
             <h3>Clients</h3>
-            <button id="new-client" class="small">+ Add</button>
+            <div class="row">
+              <button id="import-btn" class="small">Import CSV</button>
+              <button id="new-client" class="small">+ Add</button>
+            </div>
           </div>
           <input id="client-search" placeholder="Search" />
+          <button id="needs-filter" class="filter-chip" hidden></button>
           <ul id="client-list" class="client-list"></ul>
         </div>
         <div class="card">
           <form id="client-form" autocomplete="off">
             <h3 id="client-form-title">Add a client</h3>
+            <p id="client-missing" class="missing-note" hidden></p>
             <div class="grid two">
               <label>Name (as it appears on LinkedIn) *
                 <input name="name" required />
@@ -185,6 +190,39 @@
   </main>
 </div>
 
+<dialog id="import-dialog" class="dialog wide-dialog">
+  <div class="row between">
+    <h3>Import clients from a CSV</h3>
+    <button type="button" class="icon-btn" id="import-close" aria-label="Close">✕</button>
+  </div>
+  <div id="import-step-file">
+    <p class="muted small">One row per client. Columns are matched by name (for example Name, Company or Firm, Service type or Industry, Target audience, Tone, Formality, Style notes, Sample messages, Booking link or Calendly, Other names). Anything the file doesn't include is left blank for account managers to fill in. Clients already on file are never overwritten.</p>
+    <label id="import-drop" class="import-drop">
+      <input type="file" id="import-file" accept=".csv,.tsv,.txt,text/csv" hidden />
+      <strong>Drop a CSV here or click to choose</strong>
+      <span class="muted small">Exported from Excel, Google Sheets, a CRM…</span>
+    </label>
+    <p class="small"><a href="/api/clients/import-template.csv" class="ghost-link" download>Download a template</a></p>
+    <p id="import-error" class="auth-msg"></p>
+  </div>
+  <div id="import-step-preview" hidden>
+    <p id="import-summary"></p>
+    <div id="import-columns" class="column-chips"></div>
+    <div class="table-wrap import-table-wrap">
+      <table class="table import-table">
+        <thead><tr><th>Row</th><th>Client</th><th>Result</th><th>Still blank (for account managers)</th></tr></thead>
+        <tbody id="import-rows"></tbody>
+      </table>
+    </div>
+    <label id="fill-blanks-label" class="check" hidden>
+      <input type="checkbox" id="fill-blanks" /> <span id="fill-blanks-text"></span>
+    </label>
+    <div class="row between">
+      <button type="button" id="import-back" class="ghost">← Choose another file</button>
+      <button type="button" id="import-commit" class="primary">Import</button>
+    </div>
+  </div>
+</dialog>
 <dialog id="password-dialog" class="dialog">
   <form id="password-form" method="dialog">
     <h3>Change password</h3>

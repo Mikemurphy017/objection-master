@@ -479,7 +479,8 @@ document.addEventListener("paste", (e) => {
 // its own document upload, so drops there are left alone.
 const dropOverlay = $("#drop-overlay");
 const draggingFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes("Files");
-const dropIgnored = () => $("#view-library").classList.contains("active");
+const dropIgnored = () => $("#view-library").classList.contains("active") || $("#import-dialog").open;
+const isCsv = (f) => /\.(csv|tsv|txt)$/i.test(f.name) || /csv|tab-separated/.test(f.type);
 let dragDepth = 0;
 window.addEventListener("dragenter", (e) => {
   if (!draggingFiles(e) || dropIgnored()) return;
@@ -500,6 +501,12 @@ window.addEventListener("drop", (e) => {
   e.preventDefault();
   dragDepth = 0;
   dropOverlay.hidden = true;
+  const csv = [...e.dataTransfer.files].find(isCsv);
+  if (csv) {
+    if (!$("#view-clients").classList.contains("active")) location.hash = "#/clients";
+    openImport(csv);
+    return;
+  }
   sendScreenshots(e.dataTransfer.files);
 });
 
@@ -750,10 +757,35 @@ function favoriteItem(fav) {
 
 const clientForm = $("#client-form");
 
+const FIELD_LABELS = {
+  name: "Name",
+  aliases: "Other names",
+  company: "Company",
+  service_type: "Service type",
+  target_audience: "Who they target",
+  tone: "Tone",
+  formality: "Formality",
+  style_notes: "Style notes",
+  sample_messages: "Sample messages",
+  booking_link: "Booking link",
+};
+/** The details that shape replies most; a client missing any of these is flagged for account managers. */
+const KEY_FIELDS = ["service_type", "target_audience", "tone", "style_notes"];
+const missingKey = (c) => KEY_FIELDS.filter((f) => !String(c[f] ?? "").trim());
+
 function renderClientList() {
   const q = $("#client-search").value.toLowerCase();
-  const shown = state.clients.filter((c) =>
-    [c.name, c.company, c.service_type, ...c.aliases].join(" ").toLowerCase().includes(q),
+  const incomplete = state.clients.filter((c) => missingKey(c).length);
+  const chip = $("#needs-filter");
+  chip.hidden = incomplete.length === 0;
+  if (!incomplete.length) state.needsFilter = false;
+  chip.textContent = state.needsFilter ? `Showing ${incomplete.length} that need details · show all` : `${incomplete.length} need details`;
+  chip.classList.toggle("on", !!state.needsFilter);
+
+  const shown = state.clients.filter(
+    (c) =>
+      (!state.needsFilter || missingKey(c).length) &&
+      [c.name, c.company, c.service_type, ...c.aliases].join(" ").toLowerCase().includes(q),
   );
   $("#client-list").replaceChildren(
     ...(shown.length
@@ -763,11 +795,16 @@ function renderClientList() {
             { class: c.id === state.editingClientId ? "active" : "", onclick: () => (location.hash = `#/clients/${c.id}`) },
             el("span", {}, c.name),
             el("span", { class: "sub" }, [c.company, c.service_type].filter(Boolean).join(" · ") || "No details yet"),
+            missingKey(c).length > 0 && el("span", { class: "needs" }, "Needs details"),
           ),
         )
       : [el("li", { class: "sub" }, state.clients.length ? "No matches" : "No clients yet")]),
   );
 }
+$("#needs-filter").addEventListener("click", () => {
+  state.needsFilter = !state.needsFilter;
+  renderClientList();
+});
 $("#client-search").addEventListener("input", renderClientList);
 
 function editClient(id) {
@@ -779,6 +816,9 @@ function editClient(id) {
     field.value = Array.isArray(v) ? v.join(", ") : (v ?? "");
   }
   $("#client-form-title").textContent = client ? `Edit ${client.name}` : "Add a client";
+  const missing = client ? missingKey(client) : [];
+  $("#client-missing").hidden = missing.length === 0;
+  $("#client-missing").textContent = `Still to fill in: ${missing.map((f) => FIELD_LABELS[f]).join(", ")}. These shape how replies sound for this client.`;
   $("#delete-client").hidden = !client;
   $("#open-chat").hidden = !client;
   $("#client-form-msg").textContent = "";
@@ -815,6 +855,139 @@ $("#delete-client").addEventListener("click", async () => {
   location.hash = "#/clients";
   editClient(null);
   toast("Client removed");
+});
+
+// ================================================================ CSV import
+
+const importDialog = $("#import-dialog");
+let importFile = null;
+
+function showImportStep(step) {
+  $("#import-step-file").hidden = step !== "file";
+  $("#import-step-preview").hidden = step !== "preview";
+}
+
+function openImport(file) {
+  importFile = null;
+  $("#import-error").textContent = "";
+  showImportStep("file");
+  if (!importDialog.open) importDialog.showModal();
+  if (file) previewImport(file);
+}
+
+async function postImport(file, extra = {}) {
+  const form = new FormData();
+  form.append("file", file);
+  for (const [k, v] of Object.entries(extra)) form.append(k, v);
+  return api("/api/clients/import", { method: "POST", body: form });
+}
+
+const STATUS_VIEW = {
+  new: ["Will be added", "new"],
+  existing: ["Already on file", "existing"],
+  duplicate: ["Skipped: listed twice", "skip"],
+  invalid: ["Skipped: no name", "skip"],
+};
+
+async function previewImport(file) {
+  $("#import-error").textContent = "";
+  let plan;
+  try {
+    plan = await postImport(file);
+  } catch (err) {
+    $("#import-error").textContent = err.message;
+    return;
+  }
+  importFile = file;
+  const { counts } = plan;
+  const skipped = counts.duplicate + counts.invalid;
+  $("#import-summary").replaceChildren(
+    el("strong", {}, file.name), ": ",
+    `${counts.new} new client${counts.new === 1 ? "" : "s"}`,
+    counts.existing ? `, ${counts.existing} already on file` : "",
+    skipped ? `, ${skipped} skipped` : "",
+    ".",
+  );
+  $("#import-columns").replaceChildren(
+    el("span", { class: "muted small" }, "Columns: "),
+    ...plan.columns.map((c) =>
+      el(
+        "span",
+        { class: `chip ${c.field ? "mapped" : "ignored"}`, title: c.field ? `→ ${FIELD_LABELS[c.field]}` : "Not used" },
+        c.field ? `${c.header} → ${FIELD_LABELS[c.field]}` : c.header,
+      ),
+    ),
+  );
+  $("#import-rows").replaceChildren(
+    ...plan.rows.map((r) => {
+      const [label, cls] = STATUS_VIEW[r.status];
+      const detail =
+        r.status === "existing"
+          ? r.fillable.length
+            ? `${r.reason}. Can fill: ${r.fillable.map((f) => FIELD_LABELS[f]).join(", ")}`
+            : `${r.reason}. Nothing new to add`
+          : r.reason;
+      return el(
+        "tr",
+        {},
+        el("td", { class: "small muted" }, String(r.line)),
+        el("td", {}, el("div", {}, r.client.name || "—"), r.client.company && el("div", { class: "muted small" }, r.client.company)),
+        el("td", {}, el("span", { class: `badge status-${cls}` }, label), detail && r.status !== "new" && el("div", { class: "muted small" }, detail)),
+        el("td", { class: "blank-list" }, r.status === "new" ? r.missing.map((f) => FIELD_LABELS[f]).join(", ") || "Nothing, fully filled in" : ""),
+      );
+    }),
+  );
+  const fillable = plan.rows.filter((r) => r.status === "existing" && r.fillable.length).length;
+  $("#fill-blanks-label").hidden = fillable === 0;
+  $("#fill-blanks").checked = false;
+  $("#fill-blanks-text").textContent = `Also fill in blank fields on ${fillable} client${fillable === 1 ? "" : "s"} already on file (nothing gets overwritten)`;
+  const updateCommit = () => {
+    const n = counts.new + ($("#fill-blanks").checked ? fillable : 0);
+    $("#import-commit").disabled = n === 0;
+    $("#import-commit").textContent = counts.new
+      ? `Add ${counts.new} client${counts.new === 1 ? "" : "s"}${$("#fill-blanks").checked ? ` and update ${fillable}` : ""}`
+      : $("#fill-blanks").checked ? `Update ${fillable} client${fillable === 1 ? "" : "s"}` : "Nothing to import";
+  };
+  $("#fill-blanks").onchange = updateCommit;
+  updateCommit();
+  showImportStep("preview");
+}
+
+$("#import-btn").addEventListener("click", () => openImport());
+$("#import-close").addEventListener("click", () => importDialog.close());
+$("#import-back").addEventListener("click", () => openImport());
+$("#import-file").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (file) previewImport(file);
+});
+const importDrop = $("#import-drop");
+importDrop.addEventListener("dragover", (e) => (e.preventDefault(), importDrop.classList.add("over")));
+importDrop.addEventListener("dragleave", () => importDrop.classList.remove("over"));
+importDrop.addEventListener("drop", (e) => {
+  e.preventDefault();
+  importDrop.classList.remove("over");
+  const file = e.dataTransfer.files[0];
+  if (file) previewImport(file);
+});
+
+$("#import-commit").addEventListener("click", async () => {
+  const btn = $("#import-commit");
+  btn.disabled = true;
+  try {
+    const result = await postImport(importFile, { commit: "true", fillBlanks: String($("#fill-blanks").checked) });
+    importDialog.close();
+    await loadClients();
+    state.needsFilter = state.clients.some((c) => missingKey(c).length) && result.created > 0;
+    renderClientList();
+    const parts = [];
+    if (result.created) parts.push(`Added ${result.created} client${result.created === 1 ? "" : "s"}`);
+    if (result.updated) parts.push(`updated ${result.updated}`);
+    toast(`${parts.join(", ") || "Nothing changed"}. Clients missing details are flagged for account managers.`);
+  } catch (err) {
+    btn.disabled = false;
+    toast(err.message);
+  }
 });
 
 // ================================================================ library

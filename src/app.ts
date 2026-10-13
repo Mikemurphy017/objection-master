@@ -15,6 +15,7 @@ import { extractFromScreenshot, isSupportedImage } from "./ai/extract.ts";
 import type { GenerateInput, Generation } from "./ai/generate.ts";
 import { GenerationError } from "./ai/errors.ts";
 import { DEFAULT_OWNER_EMAIL, setupAuth, type AuthOptions } from "./auth.ts";
+import { TEMPLATE_CSV, fillBlanks, planImport } from "./clients-csv.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(here, "..");
@@ -139,6 +140,51 @@ export function createApp(
     route(async (req, res) => {
       const body = ClientBody.parse(req.body) as ClientInput;
       res.status(201).json(await store.createClient(body));
+    }),
+  );
+
+  // ---- bulk import from CSV ----
+
+  app.get("/api/clients/import-template.csv", (_req, res) => {
+    res.set({ "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="clients-template.csv"' });
+    res.send(TEMPLATE_CSV);
+  });
+
+  /**
+   * Upload a CSV of clients. Without `commit` it only previews what would happen.
+   * With `commit=true` it creates the new clients; with `fillBlanks=true` it also
+   * fills empty fields on clients already on file (never overwriting anything).
+   */
+  app.post(
+    "/api/clients/import",
+    upload.single("file"),
+    route(async (req, res) => {
+      if (!req.file) return res.status(400).json({ error: "Choose a CSV file to import." });
+      // Excel sometimes saves CSVs as Windows-1252 rather than UTF-8.
+      let text = req.file.buffer.toString("utf8");
+      if (text.includes("\uFFFD")) text = req.file.buffer.toString("latin1");
+      let plan;
+      try {
+        plan = planImport(text, await store.listClients());
+      } catch (err) {
+        return res.status(400).json({ error: (err as Error).message });
+      }
+      if (req.body.commit !== "true") return res.json({ ...plan, committed: false });
+
+      let created = 0;
+      let updated = 0;
+      for (const row of plan.rows) {
+        if (row.status === "new") {
+          await store.createClient(row.client);
+          created++;
+        } else if (row.status === "existing" && req.body.fillBlanks === "true" && row.fillable?.length) {
+          const stored = await store.getClient(row.existingId!);
+          if (!stored) continue;
+          await store.updateClient(stored.id, fillBlanks(stored, row.client, row.fillable));
+          updated++;
+        }
+      }
+      res.json({ ...plan, committed: true, created, updated });
     }),
   );
 

@@ -63,6 +63,15 @@ The server logs which storage it picked at startup (no secrets), e.g. `Data: Pos
 
 **Deploying on Railway:** on the app service, add variable references to the Postgres service (`DATABASE_URL=${{Postgres.DATABASE_URL}}`, the private URL; use your actual service names) and to the bucket (`BUCKET=${{Bucket.BUCKET}}`, and likewise `ENDPOINT`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION`; or use the bucket's "AWS SDK" auto-inject preset). With both set, nothing is written to disk, so no volume or `DATA_DIR` is needed. Without them the `Dockerfile` falls back to SQLite and files under `/data`, which needs a volume mounted at `/data` or everything is lost on redeploy.
 
+### Importing clients from a CSV
+
+On **Manage clients**, click **Import CSV** (or drop a CSV onto the page). You get a preview before anything is saved.
+
+- **Columns** are matched by header name, case and punctuation ignored: Name / Client Name / Full Name (or First Name + Last Name), Other names / AKA (separate several with `;`), Company / Firm, Service type / Industry, Target audience / ICP / Niche, Tone, Formality, Style notes / Notes, Sample messages, Booking link / Calendly. Unrecognised columns are shown and ignored. A template is downloadable from the dialog.
+- **Blanks stay blank.** Anything the file doesn't provide is left empty, and clients missing service type, target audience, tone or style notes are flagged **Needs details** for account managers (with a filter and a "Still to fill in" note on the client form).
+- **No duplicates, no overwrites.** Clients already on file are matched with the same fuzzy rules as screenshots (nicknames, middle initials, stored aliases) and skipped; optionally the import fills in only their empty fields. Rows without a name, and names listed twice in the file, are skipped and shown in the preview.
+- Comma-, semicolon- and tab-separated files, quoted cells with commas or line breaks, and Excel's Windows-1252 encoding all work.
+
 ### Accounts and access
 
 Everyone signs in with their own email and password; there are no public pages except sign-in.
