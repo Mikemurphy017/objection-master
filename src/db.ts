@@ -58,6 +58,27 @@ export interface Conversation {
   last_at: string | null;
 }
 
+/** A person who can sign in. `has_password` is false until they accept their invite. */
+export interface User {
+  id: number;
+  email: string;
+  name: string;
+  active: boolean;
+  has_password: boolean;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+/** Internal only: never send this to the browser. */
+export interface UserRecord extends User {
+  password_hash: string;
+}
+
+export type UserPatch = Partial<{ name: string; active: boolean; password_hash: string; last_login_at: string }>;
+
+/** Sessions keep someone signed in; invite and reset tokens are one-time links. */
+export type TokenKind = "session" | "invite" | "reset";
+
 export interface CorpusDocument {
   id: number;
   title: string;
@@ -119,6 +140,23 @@ CREATE TABLE IF NOT EXISTS corpus_chunks (
   text TEXT NOT NULL,
   position INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL DEFAULT '',
+  password_hash TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_login_at TEXT
+);
+CREATE TABLE IF NOT EXISTS auth_tokens (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS auth_tokens_user ON auth_tokens(user_id, kind);
 CREATE TABLE IF NOT EXISTS generations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
@@ -204,7 +242,48 @@ export interface Store {
   pruneRepoDocuments(keepFilenames: string[]): Promise<void>;
   chunks(pinned: boolean): Promise<CorpusChunk[]>;
 
+  // Emails are stored lowercase; callers normalise before calling.
+  listUsers(): Promise<User[]>;
+  getUserRecord(id: number): Promise<UserRecord | undefined>;
+  getUserByEmail(email: string): Promise<UserRecord | undefined>;
+  createUser(u: { email: string; name: string }): Promise<User>;
+  updateUser(id: number, patch: UserPatch): Promise<User | undefined>;
+  deleteUser(id: number): Promise<boolean>;
+
+  /** Tokens are stored as SHA-256 hashes; the raw value only ever lives in the cookie or link. */
+  addToken(t: { token_hash: string; user_id: number; kind: TokenKind; expires_at: string }): Promise<void>;
+  /** The token's user id, if it exists, matches the kind and hasn't expired. */
+  findToken(token_hash: string, kind: TokenKind): Promise<number | undefined>;
+  deleteToken(token_hash: string): Promise<void>;
+  deleteUserTokens(user_id: number, kinds: TokenKind[]): Promise<void>;
+
   close(): Promise<void>;
+}
+
+const USER_FIELDS: (keyof UserPatch)[] = ["name", "active", "password_hash", "last_login_at"];
+
+/** Shared row mapping: drivers return 0/1 or booleans for `active`. */
+export function rowToUserRecord(r: Record<string, unknown>): UserRecord {
+  return {
+    id: Number(r.id),
+    email: String(r.email),
+    name: String(r.name ?? ""),
+    active: Boolean(r.active),
+    has_password: Boolean(r.password_hash),
+    password_hash: String(r.password_hash ?? ""),
+    created_at: String(r.created_at),
+    last_login_at: r.last_login_at == null ? null : String(r.last_login_at),
+  };
+}
+
+export function publicUser(u: UserRecord): User {
+  const { password_hash: _, ...rest } = u;
+  return rest;
+}
+
+/** The columns and values an UpdateUser patch touches, in a fixed order. */
+export function userPatchEntries(patch: UserPatch): [keyof UserPatch, unknown][] {
+  return USER_FIELDS.filter((k) => patch[k] !== undefined).map((k) => [k, patch[k]]);
 }
 
 type Row = Record<string, unknown>;
@@ -464,6 +543,67 @@ export class SqliteStore implements Store {
          WHERE d.pinned = ? ORDER BY d.id, c.position`,
       )
       .all(pinned ? 1 : 0) as unknown as CorpusChunk[];
+  }
+
+  // ---- users & auth tokens ----
+
+  async listUsers(): Promise<User[]> {
+    return this.db
+      .prepare("SELECT * FROM users ORDER BY created_at, id")
+      .all()
+      .map((r) => publicUser(rowToUserRecord(r)));
+  }
+
+  async getUserRecord(id: number): Promise<UserRecord | undefined> {
+    const r = this.db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+    return r ? rowToUserRecord(r) : undefined;
+  }
+
+  async getUserByEmail(email: string): Promise<UserRecord | undefined> {
+    const r = this.db.prepare("SELECT * FROM users WHERE email = ?").get(email);
+    return r ? rowToUserRecord(r) : undefined;
+  }
+
+  async createUser(u: { email: string; name: string }): Promise<User> {
+    const r = this.db.prepare("INSERT INTO users (email, name) VALUES (?, ?) RETURNING *").get(u.email, u.name)!;
+    return publicUser(rowToUserRecord(r));
+  }
+
+  async updateUser(id: number, patch: UserPatch): Promise<User | undefined> {
+    const entries = userPatchEntries(patch);
+    if (entries.length) {
+      const sets = entries.map(([k]) => `${k} = ?`).join(", ");
+      const values = entries.map(([k, v]) => (k === "active" ? (v ? 1 : 0) : v)) as (string | number)[];
+      this.db.prepare(`UPDATE users SET ${sets} WHERE id = ?`).run(...values, id);
+    }
+    const u = await this.getUserRecord(id);
+    return u && publicUser(u);
+  }
+
+  async deleteUser(id: number): Promise<boolean> {
+    return this.db.prepare("DELETE FROM users WHERE id = ?").run(id).changes > 0;
+  }
+
+  async addToken(t: { token_hash: string; user_id: number; kind: TokenKind; expires_at: string }): Promise<void> {
+    this.db
+      .prepare("INSERT INTO auth_tokens (token_hash, user_id, kind, expires_at) VALUES (?, ?, ?, ?)")
+      .run(t.token_hash, t.user_id, t.kind, t.expires_at);
+  }
+
+  async findToken(token_hash: string, kind: TokenKind): Promise<number | undefined> {
+    const r = this.db
+      .prepare("SELECT user_id FROM auth_tokens WHERE token_hash = ? AND kind = ? AND expires_at > ?")
+      .get(token_hash, kind, sqlTimestamp(new Date())) as { user_id: number } | undefined;
+    return r?.user_id;
+  }
+
+  async deleteToken(token_hash: string): Promise<void> {
+    this.db.prepare("DELETE FROM auth_tokens WHERE token_hash = ?").run(token_hash);
+  }
+
+  async deleteUserTokens(user_id: number, kinds: TokenKind[]): Promise<void> {
+    const del = this.db.prepare("DELETE FROM auth_tokens WHERE user_id = ? AND kind = ?");
+    for (const k of kinds) del.run(user_id, k);
   }
 
   async close(): Promise<void> {

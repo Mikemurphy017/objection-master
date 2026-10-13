@@ -23,6 +23,11 @@ function el(tag, attrs = {}, ...children) {
 
 async function api(path, options = {}) {
   const res = await fetch(path, options);
+  if (res.status === 401) {
+    // Session ended (signed out elsewhere, disabled, or expired): back to sign-in.
+    location.replace(`/login?next=${encodeURIComponent(location.pathname + location.hash)}`);
+    throw new Error("Please sign in again.");
+  }
   if (res.status === 204) return null;
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
@@ -861,8 +866,42 @@ $("#corpus-form").addEventListener("submit", async (e) => {
   }
 });
 
+// ================================================================ account
+
+async function loadMe() {
+  const me = await api("/api/me");
+  $("#who").textContent = me.name ? `${me.name} · ${me.email}` : me.email;
+  $("#who").title = me.email;
+  $("#admin-link").hidden = !me.isOwner;
+  $("#password-form").elements.username.value = me.email;
+}
+
+$("#logout-btn").addEventListener("click", async () => {
+  await fetch("/api/auth/logout", { method: "POST" });
+  location.replace("/login");
+});
+
+const pwDialog = $("#password-dialog");
+$("#password-btn").addEventListener("click", () => {
+  $("#password-form").reset();
+  $("#password-msg").textContent = "";
+  pwDialog.showModal();
+});
+$("#password-cancel").addEventListener("click", () => pwDialog.close());
+$("#password-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  try {
+    await api("/api/me/password", json("POST", { current: form.elements.current.value, password: form.elements.password.value }));
+    pwDialog.close();
+    toast("Password updated. Your other devices were signed out.");
+  } catch (err) {
+    $("#password-msg").textContent = err.message;
+  }
+});
+
 // ================================================================ boot
 
-loadClients()
+Promise.all([loadMe(), loadClients()])
   .then(route)
   .catch((err) => toast(err.message));

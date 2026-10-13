@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Set your password · Objection Master Pro</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="auth-page">
+  <main class="auth-card">
+    <div class="brand">Objection Master <span>Pro</span></div>
+    <h1 id="invite-title">Set your password</h1>
+    <p id="invite-sub" class="muted"></p>
+    <form id="invite-form" hidden>
+      <input type="email" name="username" autocomplete="username" hidden />
+      <label id="name-label">Your name
+        <input name="name" autocomplete="name" />
+      </label>
+      <label>New password
+        <input name="password" type="password" autocomplete="new-password" minlength="10" required />
+        <small class="muted">At least 10 characters.</small>
+      </label>
+      <label>Confirm password
+        <input name="confirm" type="password" autocomplete="new-password" minlength="10" required />
+      </label>
+      <button type="submit" class="primary wide">Save and sign in</button>
+      <p id="msg" class="auth-msg" role="alert"></p>
+    </form>
+  </main>
+  <script type="module" src="/auth.js"></script>
+</body>
+</html>

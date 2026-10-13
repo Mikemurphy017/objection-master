@@ -19,6 +19,12 @@
     <input id="convo-search" class="side-search" placeholder="Search clients" />
     <div class="side-label">Clients</div>
     <ul id="convo-list" class="convo-list"></ul>
+    <div class="side-foot">
+      <div class="who" id="who"></div>
+      <a href="/admin/" id="admin-link" class="side-link" hidden><span class="ico" aria-hidden="true">⚙</span>Admin · who has access</a>
+      <button type="button" id="password-btn">Change password</button>
+      <button type="button" id="logout-btn">Sign out</button>
+    </div>
   </aside>
   <div class="scrim" id="scrim"></div>
 
@@ -179,6 +185,19 @@
   </main>
 </div>
 
+<dialog id="password-dialog" class="dialog">
+  <form id="password-form" method="dialog">
+    <h3>Change password</h3>
+    <input type="email" name="username" autocomplete="username" hidden />
+    <label>Current password <input name="current" type="password" autocomplete="current-password" required /></label>
+    <label>New password <input name="password" type="password" autocomplete="new-password" minlength="10" required /></label>
+    <p id="password-msg" class="auth-msg"></p>
+    <div class="row between">
+      <button type="button" id="password-cancel" class="ghost">Cancel</button>
+      <button type="submit" class="primary">Update password</button>
+    </div>
+  </form>
+</dialog>
 <div id="drop-overlay" class="drop-overlay" hidden><div>Drop to write replies</div></div>
 <div id="toast" class="toast" hidden></div>
 <script src="app.js" type="module"></script>

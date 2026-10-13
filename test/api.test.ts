@@ -53,7 +53,8 @@ for (const combo of combos) describe(`API (${combo.store.name} + ${combo.images.
   before(async () => {
     store = await combo.store.open();
     await syncRepoCorpus(store);
-    server = createApp(store, fakeAi, { images: combo.images.open() }).listen(0);
+    // Accounts are covered in auth.test.ts; here we exercise the API itself.
+    server = createApp(store, fakeAi, { auth: false, images: combo.images.open() }).listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
   after(async () => {
@@ -180,20 +181,4 @@ for (const combo of combos) describe(`API (${combo.store.name} + ${combo.images.
     assert.equal((await fetch(`${base}/api/corpus/${builtIn.id}`, { method: "DELETE" })).status, 404);
   });
 
-});
-
-test("password protection guards the API but not the health check", async () => {
-  const guarded = createApp(new SqliteStore(":memory:"), fakeAi, {
-    password: "s3cret",
-    images: new FsImageStore(tmpDir()),
-  }).listen(0);
-  const url = `http://127.0.0.1:${(guarded.address() as AddressInfo).port}`;
-  try {
-    assert.equal((await fetch(url + "/api/health")).status, 200);
-    assert.equal((await fetch(url + "/api/clients")).status, 401);
-    const auth = { Authorization: "Basic " + Buffer.from("team:s3cret").toString("base64") };
-    assert.equal((await fetch(url + "/api/clients", { headers: auth })).status, 200);
-  } finally {
-    guarded.close();
-  }
 });

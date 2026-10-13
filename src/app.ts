@@ -14,6 +14,7 @@ import { parseFile } from "./corpus/ingest.ts";
 import { extractFromScreenshot, isSupportedImage } from "./ai/extract.ts";
 import type { GenerateInput, Generation } from "./ai/generate.ts";
 import { GenerationError } from "./ai/errors.ts";
+import { DEFAULT_OWNER_EMAIL, setupAuth, type AuthOptions } from "./auth.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(here, "..");
@@ -78,19 +79,6 @@ export async function syncRepoCorpus(store: Store, dir = path.join(ROOT, "corpus
   await store.pruneRepoDocuments(files);
 }
 
-function basicAuth(password: string) {
-  const expected = Buffer.from(password);
-  return (req: Request, res: Response, next: NextFunction) => {
-    const header = req.headers.authorization ?? "";
-    const [scheme, encoded] = header.split(" ");
-    if (scheme === "Basic" && encoded) {
-      const supplied = Buffer.from(Buffer.from(encoded, "base64").toString("utf8").split(":").slice(1).join(":"));
-      if (supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected)) return next();
-    }
-    res.set("WWW-Authenticate", 'Basic realm="Objection Master Pro"').status(401).send("Authentication required");
-  };
-}
-
 type Handler = (req: Request, res: Response) => Promise<unknown> | unknown;
 const route = (fn: Handler) => (req: Request, res: Response, next: NextFunction) =>
   Promise.resolve(fn(req, res)).catch(next);
@@ -98,7 +86,8 @@ const route = (fn: Handler) => (req: Request, res: Response, next: NextFunction)
 export function createApp(
   store: Store,
   ai: AiBackend,
-  opts: { password?: string; images?: ImageStore } = {},
+  /** `auth: false` is for tests only; production always runs with accounts. */
+  opts: { auth?: AuthOptions | false; images?: ImageStore } = {},
 ) {
   const app = express();
   const images = opts.images ?? new FsImageStore(path.join(ROOT, "data", "uploads"));
@@ -115,12 +104,26 @@ export function createApp(
     return index;
   };
 
+  // Railway terminates TLS at its proxy; trust it so secure cookies and req.ip work.
+  app.set("trust proxy", 1);
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true });
   });
-  if (opts.password) app.use(basicAuth(opts.password));
   app.use(express.json({ limit: "2mb" }));
-  app.use(express.static(path.join(ROOT, "public")));
+
+  // Sign-in pages and what they need load without a session.
+  const publicDir = path.join(ROOT, "public");
+  app.get("/login", (_req, res) => res.sendFile(path.join(publicDir, "login.html")));
+  app.get("/invite", (_req, res) => res.sendFile(path.join(publicDir, "invite.html")));
+  app.get(["/styles.css", "/auth.js"], express.static(publicDir));
+
+  if (opts.auth !== false) {
+    const { requireUser, requireOwner } = setupAuth(app, store, opts.auth ?? { ownerEmail: DEFAULT_OWNER_EMAIL });
+    // The admin page lives outside public/ so only the owner can even load it.
+    app.use("/admin", requireUser, requireOwner, express.static(path.join(ROOT, "admin")));
+    app.use(requireUser);
+  }
+  app.use(express.static(publicDir));
 
   // ---- clients ----
 

@@ -16,7 +16,7 @@ Requires Node 22.18+ (runs the TypeScript directly, no build step).
 
 ```bash
 npm install
-cp .env.example .env   # set OPENAI_API_KEY (and/or ANTHROPIC_API_KEY) and APP_PASSWORD
+cp .env.example .env   # set OPENAI_API_KEY (and/or ANTHROPIC_API_KEY)
 node --env-file=.env --disable-warning=ExperimentalWarning src/server.ts
 # or: export the variables and run `npm start`
 ```
@@ -30,7 +30,8 @@ Open http://localhost:3000, add a client on the **Clients** tab, then go to **Re
 | `GENERATION_PROVIDER` / `EXTRACTION_PROVIDER` | Force a provider per step: `openai` or `anthropic`. |
 | `OPENAI_MODEL` | Default `gpt-5`. If OpenAI also reads screenshots, the model needs vision and structured outputs. |
 | `OPENAI_REASONING_EFFORT` | Optional, reasoning models only (`minimal`/`low`/`medium`/`high`). |
-| `APP_PASSWORD` | Shared team password (browser login prompt; any username works). Leave unset only for local use. |
+| `ADMIN_EMAIL` | The one account that can open `/admin` and manage access. Default `mike@bluestonepartnersllc.com`. |
+| `ADMIN_PASSWORD` | Optional. Sets the owner's first password. Without it, the server log prints a one-time setup link on first start. |
 | `DATABASE_URL` | Postgres connection string. When set, all data (clients, chat turns, saved replies, corpus) lives in Postgres instead of SQLite. See **Storage** below. |
 | `PGSSLMODE` | Optional Postgres SSL override: `disable`, `require`/`no-verify` (encrypt, skip cert check) or `verify-full`. A `sslmode=` in the URL wins. |
 | `BUCKET`, `ENDPOINT`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION` | S3-compatible bucket for screenshots (the names Railway Buckets expose). `S3_*`/`AWS_*` equivalents also work; see **Storage**. |
@@ -61,6 +62,15 @@ The server logs which storage it picked at startup (no secrets), e.g. `Data: Pos
   | Path-style URLs | `S3_FORCE_PATH_STYLE=true` (only for older Railway buckets whose Credentials tab says so) |
 
 **Deploying on Railway:** on the app service, add variable references to the Postgres service (`DATABASE_URL=${{Postgres.DATABASE_URL}}`, the private URL; use your actual service names) and to the bucket (`BUCKET=${{Bucket.BUCKET}}`, and likewise `ENDPOINT`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION`; or use the bucket's "AWS SDK" auto-inject preset). With both set, nothing is written to disk, so no volume or `DATA_DIR` is needed. Without them the `Dockerfile` falls back to SQLite and files under `/data`, which needs a volume mounted at `/data` or everything is lost on redeploy.
+
+### Accounts and access
+
+Everyone signs in with their own email and password; there are no public pages except sign-in.
+
+- **Owner:** `ADMIN_EMAIL` (Mike). On first start, if the owner has no password, the server log prints a one-time setup link (`First-time setup for ...: open <app URL>/invite#...`, valid 7 days), unless `ADMIN_PASSWORD` is set.
+- **Admin page (`/admin`, owner only):** invite people (creates a one-time link to copy or email; valid 7 days), issue a fresh invite or a password-reset link (valid 2 days), disable access (signs them out immediately), re-enable, or remove someone. Nothing is emailed automatically.
+- **Everyone:** "Change password" and "Sign out" sit at the bottom of the sidebar. Changing or resetting a password signs out the account's other devices.
+- **Under the hood:** passwords are hashed with scrypt; sessions are random tokens in an HttpOnly, SameSite=Lax cookie (30 days), stored only as SHA-256 hashes in the `auth_tokens` table alongside invite and reset tokens. Failed sign-ins are throttled (10 per 15 minutes per email and IP).
 
 ## How it works
 

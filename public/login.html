@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in · Objection Master Pro</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="auth-page">
+  <main class="auth-card">
+    <div class="brand">Objection Master <span>Pro</span></div>
+    <h1>Sign in</h1>
+    <form id="login-form" autocomplete="on">
+      <label>Email
+        <input name="email" type="email" autocomplete="username" required autofocus />
+      </label>
+      <label>Password
+        <input name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit" class="primary wide">Sign in</button>
+      <p id="msg" class="auth-msg" role="alert"></p>
+    </form>
+    <p class="muted small">No account, or forgot your password? Ask Mike for a link.</p>
+  </main>
+  <script type="module" src="/auth.js"></script>
+</body>
+</html>

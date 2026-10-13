@@ -11,8 +11,15 @@ import {
   type CorpusDocument,
   type Favorite,
   type Store,
+  type TokenKind,
   type Turn,
   type UpsertOptions,
+  type User,
+  type UserPatch,
+  type UserRecord,
+  publicUser,
+  rowToUserRecord,
+  userPatchEntries,
 } from "./db.ts";
 
 /**
@@ -77,6 +84,23 @@ CREATE TABLE IF NOT EXISTS corpus_chunks (
   position INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS corpus_chunks_document ON corpus_chunks(document_id, position);
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL DEFAULT '',
+  password_hash TEXT NOT NULL DEFAULT '',
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_login_at TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS auth_tokens (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auth_tokens_user ON auth_tokens(user_id, kind);
 `;
 
 /** Arbitrary constant for pg_advisory_xact_lock, so parallel replicas don't race on CREATE TABLE. */
@@ -322,6 +346,70 @@ export class PostgresStore implements Store {
        WHERE d.pinned = $1 ORDER BY d.id, c.position`,
       [pinned],
     );
+  }
+
+  // ---- users & auth tokens ----
+
+  async listUsers(): Promise<User[]> {
+    const rows = await this.rows<Record<string, unknown>>("SELECT * FROM users ORDER BY created_at, id");
+    return rows.map((r) => publicUser(rowToUserRecord(r)));
+  }
+
+  async getUserRecord(id: number): Promise<UserRecord | undefined> {
+    const r = await this.row<Record<string, unknown>>("SELECT * FROM users WHERE id = $1", [id]);
+    return r ? rowToUserRecord(r) : undefined;
+  }
+
+  async getUserByEmail(email: string): Promise<UserRecord | undefined> {
+    const r = await this.row<Record<string, unknown>>("SELECT * FROM users WHERE email = $1", [email]);
+    return r ? rowToUserRecord(r) : undefined;
+  }
+
+  async createUser(u: { email: string; name: string }): Promise<User> {
+    const r = await this.row<Record<string, unknown>>(
+      "INSERT INTO users (email, name) VALUES ($1, $2) RETURNING *",
+      [u.email, u.name],
+    );
+    return publicUser(rowToUserRecord(r!));
+  }
+
+  async updateUser(id: number, patch: UserPatch): Promise<User | undefined> {
+    const entries = userPatchEntries(patch);
+    if (entries.length) {
+      const sets = entries.map(([k], i) => `${k} = $${i + 1}`).join(", ");
+      // last_login_at arrives as a SQLite-style UTC string; tag it so Postgres doesn't read it as local time.
+      const values = entries.map(([k, v]) => (k === "last_login_at" ? `${v}Z` : v));
+      await this.pool.query(`UPDATE users SET ${sets} WHERE id = $${entries.length + 1}`, [...values, id]);
+    }
+    const u = await this.getUserRecord(id);
+    return u && publicUser(u);
+  }
+
+  async deleteUser(id: number): Promise<boolean> {
+    return (await this.changed("DELETE FROM users WHERE id = $1", [id])) > 0;
+  }
+
+  async addToken(t: { token_hash: string; user_id: number; kind: TokenKind; expires_at: string }): Promise<void> {
+    await this.pool.query(
+      "INSERT INTO auth_tokens (token_hash, user_id, kind, expires_at) VALUES ($1, $2, $3, $4)",
+      [t.token_hash, t.user_id, t.kind, `${t.expires_at}Z`],
+    );
+  }
+
+  async findToken(token_hash: string, kind: TokenKind): Promise<number | undefined> {
+    const r = await this.row<{ user_id: number }>(
+      "SELECT user_id FROM auth_tokens WHERE token_hash = $1 AND kind = $2 AND expires_at > now()",
+      [token_hash, kind],
+    );
+    return r?.user_id;
+  }
+
+  async deleteToken(token_hash: string): Promise<void> {
+    await this.pool.query("DELETE FROM auth_tokens WHERE token_hash = $1", [token_hash]);
+  }
+
+  async deleteUserTokens(user_id: number, kinds: TokenKind[]): Promise<void> {
+    await this.pool.query("DELETE FROM auth_tokens WHERE user_id = $1 AND kind = ANY($2)", [user_id, kinds]);
   }
 
   close(): Promise<void> {
