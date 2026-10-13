@@ -386,6 +386,7 @@ button.wide { width: 100%; padding: 11px; margin-top: 4px; }
 .check input { width: auto; margin: 0; }
 .filter-chip {
   margin: 8px 0 0; padding: 4px 10px; font-size: 12.5px; border-radius: 99px; font-weight: 600;
+  max-width: 100%; white-space: normal; text-align: left; line-height: 1.35;
   background: color-mix(in srgb, var(--gold) 14%, transparent); color: var(--gold); border-color: transparent;
 }
 .filter-chip.on { background: var(--gold); color: var(--bg); }
@@ -393,4 +394,15 @@ button.wide { width: 100%; padding: 11px; margin-top: 4px; }
 .missing-note {
   margin: -4px 0 14px; padding: 8px 12px; border-radius: 10px; font-size: 13px;
   background: color-mix(in srgb, var(--gold) 12%, transparent); color: var(--text);
+}
+
+/* Headings inside a row line up with the buttons beside them. */
+.row > h3 { margin: 0; }
+.card > .row.between:first-child { margin-bottom: 12px; }
+/* Nothing should poke out of its box: let long labels wrap instead. */
+.card button, .drawer button, .dialog button, .notice button { max-width: 100%; white-space: normal; }
+.users-table td:nth-child(3), .users-table td:nth-child(4), .users-table th { white-space: nowrap; }
+@media (max-width: 600px) {
+  .users-table th:nth-child(4), .users-table td:nth-child(4) { display: none; }
+  .admin-head { padding: 12px 16px; }
 }

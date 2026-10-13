@@ -779,7 +779,7 @@ function renderClientList() {
   const chip = $("#needs-filter");
   chip.hidden = incomplete.length === 0;
   if (!incomplete.length) state.needsFilter = false;
-  chip.textContent = state.needsFilter ? `Showing ${incomplete.length} that need details · show all` : `${incomplete.length} need details`;
+  chip.textContent = state.needsFilter ? `${incomplete.length} need details · Show all` : `${incomplete.length} need details`;
   chip.classList.toggle("on", !!state.needsFilter);
 
   const shown = state.clients.filter(
