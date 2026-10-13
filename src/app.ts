@@ -11,7 +11,7 @@ import { Bm25Index, retrieveExcerpts } from "./corpus/retrieval.ts";
 import { parseFile } from "./corpus/ingest.ts";
 import { extractFromScreenshot, isSupportedImage } from "./ai/extract.ts";
 import type { GenerateInput, Generation } from "./ai/generate.ts";
-import { GenerationError } from "./ai/claude.ts";
+import { GenerationError } from "./ai/errors.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(here, "..");

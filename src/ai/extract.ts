@@ -35,13 +35,21 @@ export function isSupportedImage(mime: string): mime is ImageType {
   return (SUPPORTED as readonly string[]).includes(mime);
 }
 
-const SYSTEM = `You read screenshots of sales conversations (usually LinkedIn messaging, sometimes email) for an outbound agency.
+export const EXTRACT_SYSTEM = `You read screenshots of sales conversations (usually LinkedIn messaging, sometimes email) for an outbound agency.
 
 The agency runs LinkedIn outreach on behalf of its clients. In every screenshot:
 - OUR CLIENT is the account owner: the person who sent the outreach. On LinkedIn their messages usually sit under their own name/photo and the conversation header shows the OTHER person's name. In email, they're the original sender.
 - THE PROSPECT is the person who replied with an objection, brush-off, question or pushback.
 
 Read the screenshot carefully and transcribe text exactly. If the client's name isn't visible but a known client name appears anywhere (signature, header, "You" replaced by a name), use it. Don't guess names that aren't in the image.`;
+
+/** The user-turn text that accompanies the screenshot (shared by every provider). */
+export function extractPrompt(knownClientNames: string[]): string {
+  const known = knownClientNames.length
+    ? `Known clients (use for client_match):\n${knownClientNames.map((n) => `- ${n}`).join("\n")}`
+    : "No clients are on file yet, so client_match must be null.";
+  return `${known}\n\nExtract the conversation details from this screenshot.`;
+}
 
 export async function extractFromScreenshot(
   image: { data: Buffer; mimeType: string },
@@ -50,9 +58,7 @@ export async function extractFromScreenshot(
   if (!isSupportedImage(image.mimeType)) {
     throw new GenerationError(`Unsupported image type ${image.mimeType}. Use PNG, JPEG, GIF or WebP.`, 400);
   }
-  const known = knownClientNames.length
-    ? `Known clients (use for client_match):\n${knownClientNames.map((n) => `- ${n}`).join("\n")}`
-    : "No clients are on file yet, so client_match must be null.";
+  const known = extractPrompt(knownClientNames);
 
   try {
     const response = await getClient().beta.messages.parse({
@@ -60,7 +66,7 @@ export async function extractFromScreenshot(
       max_tokens: 4000,
       ...FALLBACK_PARAMS,
       output_config: { effort: "low", format: betaZodOutputFormat(ExtractionSchema) },
-      system: SYSTEM,
+      system: EXTRACT_SYSTEM,
       messages: [
         {
           role: "user",
@@ -69,7 +75,7 @@ export async function extractFromScreenshot(
               type: "image",
               source: { type: "base64", media_type: image.mimeType, data: image.data.toString("base64") },
             },
-            { type: "text", text: `${known}\n\nExtract the conversation details from this screenshot.` },
+            { type: "text", text: known },
           ],
         },
       ],

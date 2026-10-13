@@ -1,4 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { GenerationError } from "./errors.ts";
+
+export { GenerationError };
 
 export const MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
 
@@ -16,15 +19,6 @@ let client: Anthropic | null = null;
 export function getClient(): Anthropic {
   client ??= new Anthropic();
   return client;
-}
-
-export class GenerationError extends Error {
-  readonly status: number;
-
-  constructor(message: string, status = 502) {
-    super(message);
-    this.status = status;
-  }
 }
 
 /** Turn SDK errors into messages the team can act on. */
