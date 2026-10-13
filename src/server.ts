@@ -1,10 +1,10 @@
 import path from "node:path";
-import { Store } from "./db.ts";
 import { ROOT, createApp, syncRepoCorpus } from "./app.ts";
+import { openStorage } from "./storage.ts";
 import { resolveProviders, selectBackend } from "./ai/providers.ts";
 
 const dataDir = process.env.DATA_DIR || path.join(ROOT, "data");
-const store = new Store(path.join(dataDir, "objection-master.db"));
+const { store, images } = await openStorage(process.env, dataDir);
 await syncRepoCorpus(store);
 
 const providers = resolveProviders();
@@ -23,11 +23,12 @@ if (!process.env.APP_PASSWORD) {
 const backend = selectBackend();
 const app = createApp(store, backend, {
   password: process.env.APP_PASSWORD,
-  uploadsDir: path.join(dataDir, "uploads"),
+  images,
 });
 const port = Number(process.env.PORT) || 3000;
+const docs = await store.listDocuments();
 app.listen(port, () => {
-  const docs = store.listDocuments();
   console.log(`Objection Master Pro on http://localhost:${port} (${docs.length} corpus documents loaded)`);
+  console.log(`Data: ${store.summary}. Screenshots: ${images.summary}.`);
   console.log(backend.summary);
 });

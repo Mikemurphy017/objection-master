@@ -153,6 +153,60 @@ export function chunkText(text: string): string[] {
   return chunks;
 }
 
+/** SHA-256 of a parsed document, used to skip re-importing unchanged corpus files. */
+export function documentHash(doc: ParsedDocument): string {
+  return crypto.createHash("sha256").update(JSON.stringify(doc)).digest("hex");
+}
+
+/** SQLite's `datetime('now')` format (UTC, no zone). The frontend parses this shape. */
+export function sqlTimestamp(d: Date): string {
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
+export type UpsertOptions = { filename: string; source: "repo" | "upload"; pinned: boolean };
+
+/**
+ * Everything the app persists except screenshots. Implemented by SqliteStore
+ * (local dev, tests) and PostgresStore (production, when DATABASE_URL is set).
+ */
+export interface Store {
+  /** Human-readable description for the startup log; never includes secrets. */
+  readonly summary: string;
+  /** Bumped whenever corpus content changes so the retrieval index knows to rebuild. */
+  corpusVersion: number;
+
+  listClients(): Promise<Client[]>;
+  getClient(id: number): Promise<Client | undefined>;
+  createClient(input: ClientInput): Promise<Client>;
+  updateClient(id: number, input: ClientInput): Promise<Client | undefined>;
+  deleteClient(id: number): Promise<boolean>;
+
+  listFavorites(clientId: number, limit?: number): Promise<Favorite[]>;
+  addFavorite(f: Omit<Favorite, "id" | "created_at">): Promise<Favorite>;
+  deleteFavorite(id: number): Promise<boolean>;
+
+  addTurn(t: Omit<Turn, "id" | "created_at">): Promise<Turn>;
+  getTurn(id: number): Promise<Turn | undefined>;
+  listTurns(clientId: number): Promise<Turn[]>;
+  deleteTurn(id: number): Promise<Turn | undefined>;
+  /** Every client as a sidebar conversation, most recently active first. */
+  listConversations(): Promise<Conversation[]>;
+
+  listDocuments(): Promise<CorpusDocument[]>;
+  /**
+   * Insert or replace a document. Resolves false when the stored copy already
+   * has identical content, so repo sync on startup is a no-op most of the time.
+   */
+  upsertDocument(doc: ParsedDocument, opts: UpsertOptions): Promise<boolean>;
+  /** Only uploaded documents can be deleted; built-in ones live in the repo. */
+  deleteDocument(id: number): Promise<boolean>;
+  /** Remove repo-sourced documents whose file no longer exists in corpus/. */
+  pruneRepoDocuments(keepFilenames: string[]): Promise<void>;
+  chunks(pinned: boolean): Promise<CorpusChunk[]>;
+
+  close(): Promise<void>;
+}
+
 type Row = Record<string, unknown>;
 
 function rowToTurn(r: Row): Turn {
@@ -167,12 +221,14 @@ function rowToClient(r: Row): Client {
   return { ...(r as unknown as Client), aliases: JSON.parse(String(r.aliases ?? "[]")) };
 }
 
-export class Store {
+/** SQLite via node:sqlite. The driver is synchronous; methods are async to share the Store interface. */
+export class SqliteStore implements Store {
   readonly db: DatabaseSync;
-  /** Bumped whenever corpus content changes so the retrieval index knows to rebuild. */
+  readonly summary: string;
   corpusVersion = 0;
 
   constructor(file: string) {
+    this.summary = file === ":memory:" ? "SQLite (in memory)" : `SQLite at ${file}`;
     if (file !== ":memory:") fs.mkdirSync(path.dirname(file), { recursive: true });
     this.db = new DatabaseSync(file);
     this.db.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;");
@@ -188,16 +244,16 @@ export class Store {
 
   // ---- clients ----
 
-  listClients(): Client[] {
+  async listClients(): Promise<Client[]> {
     return this.db.prepare("SELECT * FROM clients ORDER BY name COLLATE NOCASE").all().map(rowToClient);
   }
 
-  getClient(id: number): Client | undefined {
+  async getClient(id: number): Promise<Client | undefined> {
     const r = this.db.prepare("SELECT * FROM clients WHERE id = ?").get(id);
     return r ? rowToClient(r) : undefined;
   }
 
-  createClient(input: ClientInput): Client {
+  async createClient(input: ClientInput): Promise<Client> {
     const r = this.db
       .prepare(
         `INSERT INTO clients (name, aliases, company, service_type, target_audience, tone, formality,
@@ -216,10 +272,10 @@ export class Store {
         input.sample_messages,
         input.booking_link,
       ) as { id: number };
-    return this.getClient(r.id)!;
+    return (await this.getClient(r.id))!;
   }
 
-  updateClient(id: number, input: ClientInput): Client | undefined {
+  async updateClient(id: number, input: ClientInput): Promise<Client | undefined> {
     const res = this.db
       .prepare(
         `UPDATE clients SET name = ?, aliases = ?, company = ?, service_type = ?, target_audience = ?,
@@ -240,22 +296,22 @@ export class Store {
         input.booking_link,
         id,
       );
-    return res.changes ? this.getClient(id) : undefined;
+    return res.changes ? await this.getClient(id) : undefined;
   }
 
-  deleteClient(id: number): boolean {
+  async deleteClient(id: number): Promise<boolean> {
     return this.db.prepare("DELETE FROM clients WHERE id = ?").run(id).changes > 0;
   }
 
   // ---- favorites ----
 
-  listFavorites(clientId: number, limit = 100): Favorite[] {
+  async listFavorites(clientId: number, limit = 100): Promise<Favorite[]> {
     return this.db
       .prepare("SELECT * FROM favorites WHERE client_id = ? ORDER BY created_at DESC, id DESC LIMIT ?")
       .all(clientId, limit) as unknown as Favorite[];
   }
 
-  addFavorite(f: Omit<Favorite, "id" | "created_at">): Favorite {
+  async addFavorite(f: Omit<Favorite, "id" | "created_at">): Promise<Favorite> {
     return this.db
       .prepare(
         `INSERT INTO favorites (client_id, strategy, objection_text, response_text, prospect_name, generation_id)
@@ -271,13 +327,13 @@ export class Store {
       ) as unknown as Favorite;
   }
 
-  deleteFavorite(id: number): boolean {
+  async deleteFavorite(id: number): Promise<boolean> {
     return this.db.prepare("DELETE FROM favorites WHERE id = ?").run(id).changes > 0;
   }
 
   // ---- chat history (one turn per objection answered) ----
 
-  addTurn(t: Omit<Turn, "id" | "created_at">): Turn {
+  async addTurn(t: Omit<Turn, "id" | "created_at">): Promise<Turn> {
     const r = this.db
       .prepare(
         `INSERT INTO generations (client_id, objection_text, prospect_name, thread_context, guidance, image, result, sources)
@@ -293,29 +349,29 @@ export class Store {
         JSON.stringify(t.result),
         JSON.stringify(t.sources),
       ) as { id: number };
-    return this.getTurn(r.id)!;
+    return (await this.getTurn(r.id))!;
   }
 
-  getTurn(id: number): Turn | undefined {
+  async getTurn(id: number): Promise<Turn | undefined> {
     const r = this.db.prepare("SELECT * FROM generations WHERE id = ?").get(id);
     return r ? rowToTurn(r) : undefined;
   }
 
-  listTurns(clientId: number): Turn[] {
+  async listTurns(clientId: number): Promise<Turn[]> {
     return this.db
       .prepare("SELECT * FROM generations WHERE client_id = ? ORDER BY created_at, id")
       .all(clientId)
       .map(rowToTurn);
   }
 
-  deleteTurn(id: number): Turn | undefined {
-    const turn = this.getTurn(id);
+  async deleteTurn(id: number): Promise<Turn | undefined> {
+    const turn = await this.getTurn(id);
     if (turn) this.db.prepare("DELETE FROM generations WHERE id = ?").run(id);
     return turn;
   }
 
   /** Every client as a sidebar conversation, most recently active first. */
-  listConversations(): Conversation[] {
+  async listConversations(): Promise<Conversation[]> {
     return this.db
       .prepare(
         `SELECT c.id AS client_id, c.name, c.company, COUNT(g.id) AS turns, MAX(g.created_at) AS last_at
@@ -328,7 +384,7 @@ export class Store {
 
   // ---- corpus ----
 
-  listDocuments(): CorpusDocument[] {
+  async listDocuments(): Promise<CorpusDocument[]> {
     const rows = this.db
       .prepare(
         `SELECT d.id, d.title, d.filename, d.source, d.pinned, d.created_at,
@@ -344,11 +400,11 @@ export class Store {
    * Insert or replace a document. Returns false when the stored copy already
    * has identical content, so repo sync on startup is a no-op most of the time.
    */
-  upsertDocument(
+  async upsertDocument(
     doc: ParsedDocument,
-    opts: { filename: string; source: "repo" | "upload"; pinned: boolean },
-  ): boolean {
-    const hash = crypto.createHash("sha256").update(JSON.stringify(doc)).digest("hex");
+    opts: UpsertOptions,
+  ): Promise<boolean> {
+    const hash = documentHash(doc);
     const existing = this.db
       .prepare("SELECT id, content_hash, pinned FROM corpus_documents WHERE filename = ?")
       .get(opts.filename) as { id: number; content_hash: string; pinned: number } | undefined;
@@ -380,14 +436,14 @@ export class Store {
     return true;
   }
 
-  deleteDocument(id: number): boolean {
+  async deleteDocument(id: number): Promise<boolean> {
     const ok = this.db.prepare("DELETE FROM corpus_documents WHERE id = ? AND source = 'upload'").run(id).changes > 0;
     if (ok) this.corpusVersion++;
     return ok;
   }
 
   /** Remove repo-sourced documents whose file no longer exists in corpus/. */
-  pruneRepoDocuments(keepFilenames: string[]): void {
+  async pruneRepoDocuments(keepFilenames: string[]): Promise<void> {
     const rows = this.db.prepare("SELECT id, filename FROM corpus_documents WHERE source = 'repo'").all() as {
       id: number;
       filename: string;
@@ -400,7 +456,7 @@ export class Store {
     }
   }
 
-  chunks(pinned: boolean): CorpusChunk[] {
+  async chunks(pinned: boolean): Promise<CorpusChunk[]> {
     return this.db
       .prepare(
         `SELECT c.id, c.document_id, d.title AS document_title, c.heading, c.text
@@ -408,5 +464,9 @@ export class Store {
          WHERE d.pinned = ? ORDER BY d.id, c.position`,
       )
       .all(pinned ? 1 : 0) as unknown as CorpusChunk[];
+  }
+
+  async close(): Promise<void> {
+    this.db.close();
   }
 }

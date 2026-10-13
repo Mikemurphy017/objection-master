@@ -3,9 +3,11 @@ import multer from "multer";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { STRATEGIES, Store, type ClientInput } from "./db.ts";
+import { STRATEGIES, type ClientInput, type Store } from "./db.ts";
+import { FsImageStore, type ImageStore } from "./images.ts";
 import { matchClient } from "./match.ts";
 import { Bm25Index, retrieveExcerpts } from "./corpus/retrieval.ts";
 import { parseFile } from "./corpus/ingest.ts";
@@ -71,9 +73,9 @@ export async function syncRepoCorpus(store: Store, dir = path.join(ROOT, "corpus
   const files = fs.readdirSync(dir).filter((f) => /\.(md|txt)$/i.test(f));
   for (const file of files) {
     const doc = await parseFile(file, fs.readFileSync(path.join(dir, file)));
-    store.upsertDocument(doc, { filename: file, source: "repo", pinned: file.startsWith("core-") });
+    await store.upsertDocument(doc, { filename: file, source: "repo", pinned: file.startsWith("core-") });
   }
-  store.pruneRepoDocuments(files);
+  await store.pruneRepoDocuments(files);
 }
 
 function basicAuth(password: string) {
@@ -96,19 +98,19 @@ const route = (fn: Handler) => (req: Request, res: Response, next: NextFunction)
 export function createApp(
   store: Store,
   ai: AiBackend,
-  opts: { password?: string; uploadsDir?: string } = {},
+  opts: { password?: string; images?: ImageStore } = {},
 ) {
   const app = express();
-  const uploadsDir = opts.uploadsDir ?? path.join(ROOT, "data", "uploads");
-  fs.mkdirSync(uploadsDir, { recursive: true });
+  const images = opts.images ?? new FsImageStore(path.join(ROOT, "data", "uploads"));
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
   let index: Bm25Index | null = null;
   let indexVersion = -1;
-  const corpusIndex = () => {
+  const corpusIndex = async () => {
     if (!index || indexVersion !== store.corpusVersion) {
-      index = new Bm25Index(store.chunks(false));
-      indexVersion = store.corpusVersion;
+      const version = store.corpusVersion;
+      index = new Bm25Index(await store.chunks(false));
+      indexVersion = version;
     }
     return index;
   };
@@ -122,60 +124,72 @@ export function createApp(
 
   // ---- clients ----
 
-  app.get("/api/clients", (_req, res) => {
-    res.json(store.listClients());
-  });
+  app.get(
+    "/api/clients",
+    route(async (_req, res) => {
+      res.json(await store.listClients());
+    }),
+  );
 
   app.post(
     "/api/clients",
-    route((req, res) => {
+    route(async (req, res) => {
       const body = ClientBody.parse(req.body) as ClientInput;
-      res.status(201).json(store.createClient(body));
+      res.status(201).json(await store.createClient(body));
     }),
   );
 
   app.put(
     "/api/clients/:id",
-    route((req, res) => {
+    route(async (req, res) => {
       const body = ClientBody.parse(req.body) as ClientInput;
-      const updated = store.updateClient(Number(req.params.id), body);
+      const updated = await store.updateClient(Number(req.params.id), body);
       if (!updated) return res.status(404).json({ error: "Client not found" });
       res.json(updated);
     }),
   );
 
-  app.delete("/api/clients/:id", (req, res) => {
-    if (!store.deleteClient(Number(req.params.id))) return res.status(404).json({ error: "Client not found" });
-    res.status(204).end();
-  });
+  app.delete(
+    "/api/clients/:id",
+    route(async (req, res) => {
+      if (!(await store.deleteClient(Number(req.params.id)))) return res.status(404).json({ error: "Client not found" });
+      res.status(204).end();
+    }),
+  );
 
   // ---- favorites ----
 
-  app.get("/api/clients/:id/favorites", (req, res) => {
-    res.json(store.listFavorites(Number(req.params.id)));
-  });
+  app.get(
+    "/api/clients/:id/favorites",
+    route(async (req, res) => {
+      res.json(await store.listFavorites(Number(req.params.id)));
+    }),
+  );
 
   app.post(
     "/api/favorites",
-    route((req, res) => {
+    route(async (req, res) => {
       const body = FavoriteBody.parse(req.body);
-      if (!store.getClient(body.clientId)) return res.status(404).json({ error: "Client not found" });
-      const fav = store.addFavorite({
+      if (!(await store.getClient(body.clientId))) return res.status(404).json({ error: "Client not found" });
+      const fav = await store.addFavorite({
         client_id: body.clientId,
         strategy: body.strategy as (typeof STRATEGIES)[number],
         objection_text: body.objection,
         response_text: body.response,
         prospect_name: body.prospectName ?? "",
-        generation_id: body.turnId && store.getTurn(body.turnId) ? body.turnId : null,
+        generation_id: body.turnId && (await store.getTurn(body.turnId)) ? body.turnId : null,
       });
       res.status(201).json(fav);
     }),
   );
 
-  app.delete("/api/favorites/:id", (req, res) => {
-    if (!store.deleteFavorite(Number(req.params.id))) return res.status(404).json({ error: "Favorite not found" });
-    res.status(204).end();
-  });
+  app.delete(
+    "/api/favorites/:id",
+    route(async (req, res) => {
+      if (!(await store.deleteFavorite(Number(req.params.id)))) return res.status(404).json({ error: "Favorite not found" });
+      res.status(204).end();
+    }),
+  );
 
   // ---- pipeline: screenshot -> extraction + client match ----
 
@@ -187,17 +201,17 @@ export function createApp(
       if (!isSupportedImage(req.file.mimetype)) {
         return res.status(400).json({ error: "Screenshot must be a PNG, JPEG, GIF or WebP image." });
       }
-      const clients = store.listClients();
+      const clients = await store.listClients();
       const extraction = await ai.extract({ data: req.file.buffer, mimeType: req.file.mimetype }, clients.map((c) => c.name));
       const match = matchClient([extraction.client_match, extraction.client_name], clients);
       // Keep the screenshot so the chat history can show it next to the replies.
       const imageId = `${crypto.randomBytes(16).toString("hex")}.${IMAGE_EXT[req.file.mimetype]}`;
-      fs.writeFileSync(path.join(uploadsDir, imageId), req.file.buffer);
+      await images.save(imageId, req.file.buffer, req.file.mimetype);
       res.json({
         imageId,
         extraction,
         match: { clientId: match.client?.id ?? null, score: match.score, candidates: match.candidates },
-        favorites: match.client ? store.listFavorites(match.client.id, 20) : [],
+        favorites: match.client ? await store.listFavorites(match.client.id, 20) : [],
       });
     }),
   );
@@ -208,11 +222,11 @@ export function createApp(
     "/api/generate",
     route(async (req, res) => {
       const body = GenerateBody.parse(req.body);
-      const client = store.getClient(body.clientId);
+      const client = await store.getClient(body.clientId);
       if (!client) return res.status(404).json({ error: "Client not found" });
 
-      const excerpts = retrieveExcerpts(corpusIndex(), body.objection, body.threadContext, client.service_type);
-      const favorites = store.listFavorites(client.id, 8);
+      const excerpts = retrieveExcerpts(await corpusIndex(), body.objection, body.threadContext, client.service_type);
+      const favorites = await store.listFavorites(client.id, 8);
 
       const result = await ai.generate({
         client,
@@ -223,11 +237,11 @@ export function createApp(
         channel: body.channel,
         guidance: body.guidance,
         favorites,
-        coreStyle: store.chunks(true),
+        coreStyle: await store.chunks(true),
         excerpts,
       });
-      const imageId = body.imageId && fs.existsSync(path.join(uploadsDir, body.imageId)) ? body.imageId : "";
-      const turn = store.addTurn({
+      const imageId = body.imageId && (await images.exists(body.imageId)) ? body.imageId : "";
+      const turn = await store.addTurn({
         client_id: client.id,
         objection_text: body.objection,
         prospect_name: [body.prospectName, body.prospectHeadline].filter(Boolean).join(" - "),
@@ -243,35 +257,57 @@ export function createApp(
 
   // ---- chat history ----
 
-  app.get("/api/conversations", (_req, res) => {
-    res.json(store.listConversations());
-  });
+  app.get(
+    "/api/conversations",
+    route(async (_req, res) => {
+      res.json(await store.listConversations());
+    }),
+  );
 
-  app.get("/api/clients/:id/turns", (req, res) => {
-    const clientId = Number(req.params.id);
-    if (!store.getClient(clientId)) return res.status(404).json({ error: "Client not found" });
-    res.json({ turns: store.listTurns(clientId), favorites: store.listFavorites(clientId) });
-  });
+  app.get(
+    "/api/clients/:id/turns",
+    route(async (req, res) => {
+      const clientId = Number(req.params.id);
+      if (!(await store.getClient(clientId))) return res.status(404).json({ error: "Client not found" });
+      res.json({ turns: await store.listTurns(clientId), favorites: await store.listFavorites(clientId) });
+    }),
+  );
 
-  app.delete("/api/turns/:id", (req, res) => {
-    const turn = store.deleteTurn(Number(req.params.id));
-    if (!turn) return res.status(404).json({ error: "Not found" });
-    if (turn.image && IMAGE_ID.test(turn.image)) fs.rmSync(path.join(uploadsDir, turn.image), { force: true });
-    res.status(204).end();
-  });
+  app.delete(
+    "/api/turns/:id",
+    route(async (req, res) => {
+      const turn = await store.deleteTurn(Number(req.params.id));
+      if (!turn) return res.status(404).json({ error: "Not found" });
+      if (turn.image && IMAGE_ID.test(turn.image)) await images.remove(turn.image);
+      res.status(204).end();
+    }),
+  );
 
-  app.get("/api/images/:id", (req, res) => {
-    if (!IMAGE_ID.test(req.params.id)) return res.status(404).end();
-    const file = path.join(uploadsDir, req.params.id);
-    if (!fs.existsSync(file)) return res.status(404).end();
-    res.set("Cache-Control", "private, max-age=31536000, immutable").sendFile(file);
-  });
+  // Screenshots are streamed through the app (behind the password) because the bucket is private.
+  app.get(
+    "/api/images/:id",
+    route(async (req, res) => {
+      if (!IMAGE_ID.test(String(req.params.id))) return res.status(404).end();
+      const image = await images.get(String(req.params.id));
+      if (!image) return res.status(404).end();
+      res.set({
+        "Content-Type": image.contentType,
+        "Cache-Control": "private, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+      });
+      if (image.length !== undefined) res.set("Content-Length", String(image.length));
+      await pipeline(image.body, res);
+    }),
+  );
 
   // ---- Klaff corpus ----
 
-  app.get("/api/corpus", (_req, res) => {
-    res.json(store.listDocuments());
-  });
+  app.get(
+    "/api/corpus",
+    route(async (_req, res) => {
+      res.json(await store.listDocuments());
+    }),
+  );
 
   app.post(
     "/api/corpus",
@@ -286,21 +322,25 @@ export function createApp(
       }
       if (!doc.sections.length) return res.status(400).json({ error: "No text found in that file." });
       if (typeof req.body.title === "string" && req.body.title.trim()) doc.title = req.body.title.trim();
-      store.upsertDocument(doc, { filename: `upload:${req.file.originalname}`, source: "upload", pinned: false });
-      res.status(201).json(store.listDocuments());
+      await store.upsertDocument(doc, { filename: `upload:${req.file.originalname}`, source: "upload", pinned: false });
+      res.status(201).json(await store.listDocuments());
     }),
   );
 
-  app.delete("/api/corpus/:id", (req, res) => {
-    if (!store.deleteDocument(Number(req.params.id))) {
-      return res.status(404).json({ error: "Not found (built-in documents can only be changed in the repo)." });
-    }
-    res.status(204).end();
-  });
+  app.delete(
+    "/api/corpus/:id",
+    route(async (req, res) => {
+      if (!(await store.deleteDocument(Number(req.params.id)))) {
+        return res.status(404).json({ error: "Not found (built-in documents can only be changed in the repo)." });
+      }
+      res.status(204).end();
+    }),
+  );
 
   // ---- errors ----
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    if (res.headersSent) return res.destroy();
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: err.issues.map((i) => i.message).join("; ") });
     }

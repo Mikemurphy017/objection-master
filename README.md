@@ -31,12 +31,36 @@ Open http://localhost:3000, add a client on the **Clients** tab, then go to **Re
 | `OPENAI_MODEL` | Default `gpt-5`. If OpenAI also reads screenshots, the model needs vision and structured outputs. |
 | `OPENAI_REASONING_EFFORT` | Optional, reasoning models only (`minimal`/`low`/`medium`/`high`). |
 | `APP_PASSWORD` | Shared team password (browser login prompt; any username works). Leave unset only for local use. |
-| `DATA_DIR` | Where the SQLite database lives (default `./data`). Use a persistent volume in production. |
+| `DATABASE_URL` | Postgres connection string. When set, all data (clients, chat turns, saved replies, corpus) lives in Postgres instead of SQLite. See **Storage** below. |
+| `PGSSLMODE` | Optional Postgres SSL override: `disable`, `require`/`no-verify` (encrypt, skip cert check) or `verify-full`. A `sslmode=` in the URL wins. |
+| `BUCKET`, `ENDPOINT`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION` | S3-compatible bucket for screenshots (the names Railway Buckets expose). `S3_*`/`AWS_*` equivalents also work; see **Storage**. |
+| `DATA_DIR` | Fallback storage when the above aren't set: the SQLite file and `uploads/` screenshots (default `./data`). |
 | `CLAUDE_MODEL` | Default `claude-opus-5-5` (steps running on Claude only). |
 | `GENERATION_EFFORT` | Claude effort for replies: `low` / `medium` (default) / `high`. |
 | `CORPUS_EXCERPTS` | Klaff passages retrieved per objection (default 6). |
 
-**Deploying:** the `Dockerfile` runs the app with the database on a `/data` volume. On Railway or similar, attach a volume at `/data` and set the variables above. Without a persistent volume, clients and saved replies are lost on each redeploy.
+### Storage
+
+| What | Default (local dev, tests) | Production |
+|---|---|---|
+| Clients, chat turns, saved replies, Klaff corpus | SQLite at `$DATA_DIR/objection-master.db` | Postgres, when `DATABASE_URL` is set |
+| Screenshots | Files in `$DATA_DIR/uploads/` | S3-compatible bucket, when a bucket is configured |
+
+The server logs which storage it picked at startup (no secrets), e.g. `Data: Postgres at postgres.railway.internal:5432/railway (SSL off). Screenshots: bucket "shots-ab12cd" at t3.storageapi.dev.`
+
+- **Postgres** (`src/db-postgres.ts`): tables are created on startup if missing (`CREATE TABLE IF NOT EXISTS`), so a fresh database needs no setup. SSL is picked from `sslmode` in the URL, then `PGSSLMODE`, then automatically: off for `localhost`, single-word hosts and Railway's private `*.railway.internal` hostname; on without certificate verification for anything else (which is what Railway's public `*.proxy.rlwy.net` URL needs). Existing SQLite data is not copied over.
+- **Bucket** (`src/images.ts`): screenshots are stored under `screenshots/<id>` (override with `S3_PREFIX`) and streamed back through the app's own password-protected `/api/images/:id`, so the bucket stays private. The bucket name plus both keys are required; endpoint and region are optional (region defaults to `auto`). Accepted names, first match wins:
+
+  | Setting | Variables |
+  |---|---|
+  | Bucket | `S3_BUCKET`, `BUCKET_NAME`, `AWS_S3_BUCKET_NAME`, `BUCKET` |
+  | Endpoint | `S3_ENDPOINT`, `BUCKET_ENDPOINT`, `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL`, `ENDPOINT` |
+  | Access key id | `S3_ACCESS_KEY_ID`, `BUCKET_ACCESS_KEY_ID`, `AWS_ACCESS_KEY_ID`, `ACCESS_KEY_ID` |
+  | Secret key | `S3_SECRET_ACCESS_KEY`, `BUCKET_SECRET_ACCESS_KEY`, `AWS_SECRET_ACCESS_KEY`, `SECRET_ACCESS_KEY` |
+  | Region | `S3_REGION`, `BUCKET_REGION`, `AWS_REGION`, `AWS_DEFAULT_REGION`, `REGION` |
+  | Path-style URLs | `S3_FORCE_PATH_STYLE=true` (only for older Railway buckets whose Credentials tab says so) |
+
+**Deploying on Railway:** on the app service, add variable references to the Postgres service (`DATABASE_URL=${{Postgres.DATABASE_URL}}`, the private URL; use your actual service names) and to the bucket (`BUCKET=${{Bucket.BUCKET}}`, and likewise `ENDPOINT`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION`; or use the bucket's "AWS SDK" auto-inject preset). With both set, nothing is written to disk, so no volume or `DATA_DIR` is needed. Without them the `Dockerfile` falls back to SQLite and files under `/data`, which needs a volume mounted at `/data` or everything is lost on redeploy.
 
 ## How it works
 
@@ -50,7 +74,7 @@ client profile + saved favorites + core Klaff playbook + retrieved Klaff passage
                  OpenAI (or Claude) ──► 3 replies (structured JSON), one per goal
 ```
 
-- **Client store** (`src/db.ts`, SQLite): name, alternate spellings, company, service type, target audience, tone, formality, phrasing do's and don'ts, sample messages, optional booking link. Matching uses the name and the alternate spellings, so add any variant that shows up on LinkedIn.
+- **Client store** (`src/db.ts`; SQLite locally, Postgres in production): name, alternate spellings, company, service type, target audience, tone, formality, phrasing do's and don'ts, sample messages, optional booking link. Matching uses the name and the alternate spellings, so add any variant that shows up on LinkedIn.
 - **If the name doesn't match** (or two clients are equally close), the app doesn't guess. It asks you to pick the client from the dropdown. Every extracted field stays editable before you regenerate, and **Type the objection instead** skips the screenshot entirely.
 - **Klaff corpus** (`corpus/`, plus uploads on the **Klaff Library** tab):
   - `core-klaff-style-playbook.md` is sent with every request. It distills the cold-outreach course, *Pitch Anything* and *Flip the Script* into working rules, written in our own words (frames, status, prizing, intrigue, push-pull, no-neediness, anti-bot tells, an objection-reading table, and industry lingo banks).
@@ -66,7 +90,8 @@ client profile + saved favorites + core Klaff playbook + retrieved Klaff passage
 ## Development
 
 ```bash
-npm test          # unit + API tests (LLMs are stubbed, no API key needed)
+npm test          # unit + API tests (LLMs and S3 are stubbed, no API key or services needed)
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/om_test npm test   # also run the store + API tests on Postgres
 npm run typecheck
 npm run dev       # restarts on file changes
 ```
@@ -74,7 +99,10 @@ npm run dev       # restarts on file changes
 ```
 src/server.ts            entry point
 src/app.ts               Express routes (clients, favorites, analyze, generate, corpus)
-src/db.ts                SQLite store
+src/storage.ts           picks Postgres/SQLite and bucket/filesystem from the environment
+src/db.ts                Store interface, shared types, SQLite store
+src/db-postgres.ts       Postgres store
+src/images.ts            screenshot storage (filesystem or S3 bucket)
 src/match.ts             client-name matching
 src/ai/providers.ts      picks OpenAI or Claude per step
 src/ai/openai.ts         OpenAI (Responses API) screenshot reading + generation
