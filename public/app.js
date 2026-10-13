@@ -15,7 +15,6 @@ function el(tag, attrs = {}, ...children) {
     if (v == null || v === false) continue;
     if (k === "class") node.className = v;
     else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
-    else if (k === "text") node.textContent = v;
     else node.setAttribute(k, v === true ? "" : v);
   }
   for (const c of children.flat()) if (c != null && c !== false && c !== "") node.append(c);
@@ -41,7 +40,7 @@ function toast(msg) {
   t.textContent = msg;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.hidden = true), 2200);
+  toastTimer = setTimeout(() => (t.hidden = true), 2400);
 }
 
 async function copyText(text) {
@@ -57,255 +56,238 @@ async function copyText(text) {
   toast("Copied");
 }
 
-const fmtDate = (s) => new Date(s.replace(" ", "T") + "Z").toLocaleDateString();
+const parseDate = (s) => new Date(s.replace(" ", "T") + "Z");
+function relTime(s) {
+  if (!s) return "";
+  const d = parseDate(s);
+  const mins = Math.round((Date.now() - d) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60 * 24) return `${Math.round(mins / 60)}h ago`;
+  if (mins < 60 * 24 * 7) return `${Math.round(mins / 1440)}d ago`;
+  return d.toLocaleDateString();
+}
+const fmtTime = (s) =>
+  parseDate(s).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
-// ---------------------------------------------------------------- state
+// ================================================================ state
 
 const state = {
   clients: [],
-  extraction: null,
-  lastGeneration: null,
+  conversations: [],
+  route: { view: "new", clientId: null },
+  turns: [],
+  favorites: [],
+  attachment: null, // { file, url }
+  editing: null, // context carried over when re-sending an earlier objection
+  busy: false,
   editingClientId: null,
 };
 
+const currentClient = () => state.clients.find((c) => c.id === state.route.clientId) ?? null;
+
 async function loadClients() {
-  state.clients = await api("/api/clients");
-  renderClientSelect();
+  [state.clients, state.conversations] = await Promise.all([api("/api/clients"), api("/api/conversations")]);
+  renderSidebar();
+  renderComposerClients();
   renderClientList();
 }
 
-// ---------------------------------------------------------------- tabs
+// ================================================================ routing
 
-document.querySelectorAll(".tab").forEach((tab) =>
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
-    document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${tab.dataset.view}`));
-    if (tab.dataset.view === "library") loadCorpus();
-  }),
-);
-
-// ---------------------------------------------------------------- respond: upload
-
-const dropzone = $("#dropzone");
-const fileInput = $("#file-input");
-
-dropzone.addEventListener("click", () => fileInput.click());
-dropzone.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" || e.key === " ") fileInput.click();
-});
-fileInput.addEventListener("change", () => fileInput.files[0] && handleImage(fileInput.files[0]));
-dropzone.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  dropzone.classList.add("over");
-});
-dropzone.addEventListener("dragleave", () => dropzone.classList.remove("over"));
-dropzone.addEventListener("drop", (e) => {
-  e.preventDefault();
-  dropzone.classList.remove("over");
-  const file = [...e.dataTransfer.files].find((f) => f.type.startsWith("image/"));
-  if (file) handleImage(file);
-});
-document.addEventListener("paste", (e) => {
-  if (!$("#view-respond").classList.contains("active")) return;
-  if (e.target.closest("input, textarea, [contenteditable='true']")) return;
-  const item = [...e.clipboardData.items].find((i) => i.type.startsWith("image/"));
-  if (item) handleImage(item.getAsFile());
-});
-
-/** Big retina screenshots get downscaled so uploads stay fast and under Claude's image limits. */
-async function prepareImage(file) {
-  const MAX_SIDE = 2000;
-  const MAX_BYTES = 3.5 * 1024 * 1024;
-  const bitmap = await createImageBitmap(file).catch(() => null);
-  if (!bitmap) return file;
-  const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
-  if (scale === 1 && file.size <= MAX_BYTES && ["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-    return file;
-  }
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.9));
-  return new File([blob], "screenshot.jpg", { type: "image/jpeg" });
+function parseHash() {
+  const [, view, id] = location.hash.match(/^#\/(\w+)(?:\/(\d+))?/) ?? [];
+  if (view === "client" && id) return { view: "client", clientId: Number(id) };
+  if (view === "clients" || view === "library") return { view, clientId: id ? Number(id) : null };
+  return { view: "new", clientId: null };
 }
 
-function setStep(name, status) {
-  const node = document.querySelector(`.step[data-step="${name}"]`);
-  node.classList.remove("active", "done", "skipped");
-  if (status) node.classList.add(status);
-}
+async function route() {
+  state.route = parseHash();
+  const { view } = state.route;
+  document.querySelector(".app").classList.remove("nav-open");
+  $("#saved-drawer").hidden = true;
 
-function showError(msg) {
-  const box = $("#respond-error");
-  box.textContent = msg;
-  box.hidden = !msg;
-}
+  const isChat = view === "new" || view === "client";
+  $("#view-chat").classList.toggle("active", isChat);
+  $("#view-clients").classList.toggle("active", view === "clients");
+  $("#view-library").classList.toggle("active", view === "library");
+  document.querySelectorAll(".side-link").forEach((a) => a.classList.toggle("active", a.dataset.route === view));
 
-function resetResults() {
-  $("#results").hidden = true;
-  $("#options").replaceChildren();
-  showError("");
-}
-
-async function handleImage(file) {
-  resetResults();
-  const prepared = await prepareImage(file);
-  const preview = $("#preview");
-  preview.src = URL.createObjectURL(prepared);
-  preview.hidden = false;
-  dropzone.classList.add("has-image");
-
-  $("#steps").hidden = false;
-  ["read", "match", "write"].forEach((s) => setStep(s, null));
-  setStep("read", "active");
-
-  const form = new FormData();
-  form.append("screenshot", prepared);
-  let analysis;
-  try {
-    analysis = await api("/api/analyze", { method: "POST", body: form });
-  } catch (err) {
-    setStep("read", null);
-    showError(`${err.message} You can also type the objection in below.`);
-    showContext({});
+  if (view === "client" && !currentClient()) {
+    location.hash = "#/new";
     return;
   }
-  setStep("read", "done");
-  setStep("match", "active");
+  renderSidebar();
+  renderHeader();
 
-  const { extraction, match } = analysis;
-  state.extraction = extraction;
-  showContext({
-    clientId: match.clientId,
-    prospect: [extraction.prospect_name, extraction.prospect_headline].filter(Boolean).join(" - "),
-    objection: extraction.objection_text,
-    thread: extraction.thread_context,
-  });
+  if (view === "clients") editClient(state.route.clientId);
+  if (view === "library") loadCorpus();
+  if (isChat) {
+    renderComposerClients();
+    if (view === "client") await loadTurns();
+    else {
+      state.turns = [];
+      state.favorites = [];
+      renderThread();
+    }
+    $("#composer-text").focus();
+  }
+}
+window.addEventListener("hashchange", route);
 
-  const note = $("#match-note");
-  if (match.clientId) {
-    setStep("match", "done");
-    note.textContent = `Matched "${extraction.client_name || extraction.client_match}" from the screenshot`;
-    await generate();
+function renderHeader() {
+  const { view } = state.route;
+  const client = currentClient();
+  const titles = { new: "New chat", clients: "Manage clients", library: "Klaff library" };
+  $("#head-name").textContent = view === "client" ? client.name : titles[view];
+  $("#head-sub").textContent =
+    view === "client" ? [client.company, client.service_type].filter(Boolean).join(" · ") : "";
+  $("#head-actions").hidden = view !== "client";
+  $("#saved-count").textContent = state.favorites.length || "";
+}
+
+// ================================================================ sidebar
+
+function renderSidebar() {
+  const q = $("#convo-search").value.trim().toLowerCase();
+  const list = $("#convo-list");
+  const shown = state.conversations.filter((c) => `${c.name} ${c.company}`.toLowerCase().includes(q));
+  list.replaceChildren(
+    ...(shown.length
+      ? shown.map((c) =>
+          el(
+            "li",
+            {
+              class: state.route.view === "client" && state.route.clientId === c.client_id ? "active" : "",
+              onclick: () => (location.hash = `#/client/${c.client_id}`),
+              title: c.name,
+            },
+            el("span", { class: "name" }, c.name),
+            el(
+              "span",
+              { class: "sub" },
+              c.turns ? `${c.turns} objection${c.turns === 1 ? "" : "s"} · ${relTime(c.last_at)}` : c.company || "No objections yet",
+            ),
+          ),
+        )
+      : [
+          el(
+            "li",
+            { class: "empty-li" },
+            state.conversations.length ? "No matches" : "No clients yet. Add one under Manage clients.",
+          ),
+        ]),
+  );
+}
+$("#convo-search").addEventListener("input", renderSidebar);
+$("#menu-btn").addEventListener("click", () => document.querySelector(".app").classList.add("nav-open"));
+$("#scrim").addEventListener("click", () => document.querySelector(".app").classList.remove("nav-open"));
+$("#edit-client-btn").addEventListener("click", () => (location.hash = `#/clients/${state.route.clientId}`));
+
+// ================================================================ thread
+
+async function loadTurns() {
+  const clientId = state.route.clientId;
+  const data = await api(`/api/clients/${clientId}/turns`);
+  if (state.route.clientId !== clientId) return; // navigated away meanwhile
+  state.turns = data.turns;
+  state.favorites = data.favorites;
+  renderThread();
+  renderHeader();
+  renderFavorites();
+}
+
+function renderThread() {
+  const thread = $("#thread");
+  const empty = state.turns.length === 0 && !thread.querySelector(".turn.live");
+  const client = currentClient();
+  $("#view-chat").classList.toggle("is-empty", empty);
+  $("#hero").hidden = !empty;
+  if (client) {
+    $("#hero-title").textContent = `Handling an objection for ${client.name.split(" ")[0]}?`;
+    $("#hero-sub").textContent = "Paste a screenshot or type what the prospect said. Replies are tuned to this client's voice.";
   } else {
-    setStep("match", null);
-    const seen = extraction.client_name ? `Saw "${extraction.client_name}" but it` : "The client's name";
-    note.textContent = state.clients.length
-      ? `${seen} didn't match a client on file. Pick one, then Write replies.`
-      : "No clients on file yet. Add one on the Clients tab first.";
-    $("#ctx-client").focus();
+    $("#hero-title").textContent = "What objection are we handling?";
+    $("#hero-sub").textContent = "Paste or drop a screenshot of the LinkedIn reply. The client is picked up automatically.";
   }
-  if (extraction.notes) toast(extraction.notes);
+  thread.replaceChildren(...state.turns.map(turnView));
+  scrollToBottom();
 }
 
-$("#type-instead").addEventListener("click", () => {
-  resetResults();
-  showContext({});
-  $("#ctx-objection").focus();
-});
+function scrollToBottom() {
+  const box = $("#chat-scroll");
+  requestAnimationFrame(() => (box.scrollTop = box.scrollHeight));
+}
 
-// ---------------------------------------------------------------- respond: context + generation
-
-function renderClientSelect() {
-  const select = $("#ctx-client");
-  const current = select.value;
-  select.replaceChildren(
-    el("option", { value: "" }, state.clients.length ? "Choose a client..." : "No clients yet"),
-    ...state.clients.map((c) => el("option", { value: c.id }, c.company ? `${c.name} (${c.company})` : c.name)),
+function userBubble({ imageUrl, objection, prospect, guidance, time }) {
+  return el(
+    "div",
+    { class: "user-msg" },
+    el(
+      "div",
+      { class: "bubble" },
+      imageUrl && el("img", { class: "shot", src: imageUrl, alt: "Screenshot", onclick: () => window.open(imageUrl, "_blank") }),
+      objection && el("div", { class: "objection" }, objection),
+      (prospect || time) && el("div", { class: "meta" }, [prospect, time].filter(Boolean).join(" · ")),
+      guidance && el("span", { class: "chip" }, `Steer: ${guidance}`),
+    ),
   );
-  select.value = current;
 }
 
-function showContext({ clientId, prospect, objection, thread }) {
-  $("#context").hidden = false;
-  if (clientId !== undefined) $("#ctx-client").value = clientId ?? "";
-  if (prospect !== undefined) $("#ctx-prospect").value = prospect || "";
-  if (objection !== undefined) $("#ctx-objection").value = objection || "";
-  if (thread !== undefined) {
-    $("#ctx-thread").value = thread || "";
-    $("#ctx-thread").closest("details").open = Boolean(thread);
-  }
-  $("#match-note").textContent = "";
-  loadFavoritesPanel();
-}
-
-$("#ctx-client").addEventListener("change", () => {
-  $("#match-note").textContent = "";
-  loadFavoritesPanel();
-});
-
-$("#generate-btn").addEventListener("click", generate);
-
-async function generate() {
-  const clientId = Number($("#ctx-client").value);
-  const objection = $("#ctx-objection").value.trim();
-  if (!clientId) return showError("Pick which client this conversation belongs to.");
-  if (!objection) return showError("There's no objection text to answer.");
-  showError("");
-
-  const [prospectName, ...headline] = $("#ctx-prospect").value.split(" - ");
-  const btn = $("#generate-btn");
-  btn.disabled = true;
-  btn.textContent = "Writing...";
-  $("#steps").hidden = false;
-  setStep("write", "active");
-  try {
-    const data = await api(
-      "/api/generate",
-      json("POST", {
-        clientId,
-        objection,
-        threadContext: $("#ctx-thread").value,
-        prospectName: prospectName?.trim() || null,
-        prospectHeadline: headline.join(" - ").trim() || null,
-        channel: state.extraction?.channel,
-        guidance: $("#ctx-guidance").value,
-      }),
-    );
-    state.lastGeneration = { ...data, clientId, objection, prospectName: prospectName?.trim() || "" };
-    setStep("write", "done");
-    renderResults(data);
-  } catch (err) {
-    setStep("write", null);
-    showError(err.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Regenerate";
-  }
-}
-
-function renderResults({ result, sources }) {
-  $("#results").hidden = false;
-  $("#read-line").replaceChildren(el("strong", {}, "Read: "), result.read);
-  $("#options").replaceChildren(
-    ...Object.keys(GOALS).map((goal) => optionCard(goal, result[goal], result.recommended === goal)),
+function turnView(turn) {
+  const r = turn.result;
+  return el(
+    "div",
+    { class: "turn", "data-turn": turn.id },
+    userBubble({
+      imageUrl: turn.image ? `/api/images/${turn.image}` : null,
+      objection: turn.objection_text,
+      prospect: turn.prospect_name,
+      guidance: turn.guidance,
+      time: fmtTime(turn.created_at),
+    }),
+    el(
+      "div",
+      { class: "assistant" },
+      r.read && el("p", { class: "read-line" }, el("strong", {}, "Read: "), r.read),
+      el("div", { class: "options" }, ...Object.keys(GOALS).map((goal) => optionCard(turn, goal, r[goal], r.recommended === goal))),
+      el(
+        "div",
+        { class: "turn-foot" },
+        el("span", { class: "sources" }, turn.sources?.length ? `Drew on: ${[...new Set(turn.sources.map((s) => s.section))].join(" · ")}` : ""),
+        el("button", { class: "ghost", onclick: () => regenerate(turn) }, "↻ Regenerate"),
+        el("button", { class: "ghost", onclick: () => editTurn(turn) }, "✎ Edit"),
+        el("button", { class: "ghost", onclick: () => deleteTurn(turn) }, "Delete"),
+      ),
+    ),
   );
-  const uniq = [...new Set(sources.map((s) => s.section))];
-  $("#sources").textContent = uniq.length ? `Drew on: ${uniq.join(" · ")}` : "";
 }
 
-function optionCard(goal, option, recommended) {
+function optionCard(turn, goal, option, recommended) {
   const message = el("p", { class: "message", contenteditable: "true", spellcheck: "true" }, option.message);
-  const saveBtn = el("button", { class: "star" }, "☆ Save");
+  const savedAlready = state.favorites.some((f) => f.generation_id === turn.id && f.strategy === goal);
+  const saveBtn = el("button", { class: `star${savedAlready ? " saved" : ""}`, disabled: savedAlready }, savedAlready ? "★ Saved" : "☆ Save");
   saveBtn.addEventListener("click", async () => {
-    const g = state.lastGeneration;
     saveBtn.disabled = true;
     try {
-      await api(
+      const fav = await api(
         "/api/favorites",
         json("POST", {
-          clientId: g.clientId,
+          clientId: turn.client_id,
           strategy: goal,
-          objection: g.objection,
+          objection: turn.objection_text,
           response: message.innerText.trim(),
-          prospectName: g.prospectName,
+          prospectName: turn.prospect_name,
+          turnId: turn.id,
         }),
       );
+      state.favorites.unshift(fav);
       saveBtn.textContent = "★ Saved";
       saveBtn.classList.add("saved");
-      toast("Saved to this client's library");
-      loadFavoritesPanel();
+      renderFavorites();
+      renderHeader();
+      toast("Saved to this client's replies");
     } catch (err) {
       saveBtn.disabled = false;
       toast(err.message);
@@ -331,9 +313,359 @@ function optionCard(goal, option, recommended) {
   );
 }
 
-// ---------------------------------------------------------------- favorites
+async function regenerate(turn) {
+  await runTurn({
+    clientId: turn.client_id,
+    objection: turn.objection_text,
+    threadContext: turn.thread_context,
+    prospect: turn.prospect_name,
+    imageId: turn.image || null,
+    guidance: $("#composer-steer").value.trim() || turn.guidance,
+  });
+}
 
-function favoriteItem(fav, onDelete) {
+function editTurn(turn) {
+  state.editing = { threadContext: turn.thread_context, prospect: turn.prospect_name, imageId: turn.image || null };
+  clearAttachment();
+  $("#composer-text").value = turn.objection_text;
+  $("#composer-steer").value = turn.guidance || "";
+  renderAttachments();
+  autosize();
+  $("#composer-text").focus();
+}
+
+async function deleteTurn(turn) {
+  if (!confirm("Delete this objection and its replies from the chat? Saved replies are kept.")) return;
+  await api(`/api/turns/${turn.id}`, { method: "DELETE" });
+  state.turns = state.turns.filter((t) => t.id !== turn.id);
+  renderThread();
+  loadClients();
+}
+
+// ================================================================ composer
+
+const textarea = $("#composer-text");
+const fileInput = $("#file-input");
+
+function autosize() {
+  textarea.style.height = "auto";
+  textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
+}
+textarea.addEventListener("input", autosize);
+textarea.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    $("#composer").requestSubmit();
+  }
+});
+
+function renderComposerClients() {
+  const select = $("#composer-client");
+  const inClient = state.route.view === "client";
+  select.hidden = inClient;
+  if (inClient) return;
+  const current = select.value;
+  select.replaceChildren(
+    el("option", { value: "" }, "Client: auto-detect"),
+    ...state.clients.map((c) => el("option", { value: c.id }, c.name)),
+  );
+  select.value = state.clients.some((c) => String(c.id) === current) ? current : "";
+}
+
+/** Big retina screenshots get downscaled so uploads stay fast and under model image limits. */
+async function prepareImage(file) {
+  const MAX_SIDE = 2000;
+  const MAX_BYTES = 3.5 * 1024 * 1024;
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return file;
+  const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  if (scale === 1 && file.size <= MAX_BYTES && ["image/png", "image/jpeg", "image/webp"].includes(file.type)) return file;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.9));
+  return new File([blob], "screenshot.jpg", { type: "image/jpeg" });
+}
+
+async function attach(file) {
+  if (!file || !file.type.startsWith("image/")) return toast("That isn't an image.");
+  clearAttachment();
+  state.editing = null;
+  const prepared = await prepareImage(file);
+  state.attachment = { file: prepared, url: URL.createObjectURL(prepared) };
+  renderAttachments();
+  textarea.focus();
+}
+
+function clearAttachment() {
+  if (state.attachment) URL.revokeObjectURL(state.attachment.url);
+  state.attachment = null;
+}
+
+function renderAttachments() {
+  const box = $("#attachments");
+  const items = [];
+  if (state.attachment) {
+    items.push(
+      el(
+        "div",
+        { class: "attachment" },
+        el("img", { src: state.attachment.url, alt: "Attached screenshot" }),
+        el("button", { type: "button", "aria-label": "Remove", onclick: () => (clearAttachment(), renderAttachments()) }, "✕"),
+      ),
+    );
+  }
+  if (state.editing) {
+    items.push(
+      el(
+        "span",
+        { class: "chip" },
+        "Editing an earlier objection ",
+        el("a", { href: "#", onclick: (e) => (e.preventDefault(), (state.editing = null), renderAttachments()) }, "✕"),
+      ),
+    );
+  }
+  box.replaceChildren(...items);
+  box.hidden = items.length === 0;
+}
+
+$("#attach-btn").addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => {
+  if (fileInput.files[0]) attach(fileInput.files[0]);
+  fileInput.value = "";
+});
+document.addEventListener("paste", (e) => {
+  if (!$("#view-chat").classList.contains("active")) return;
+  const item = [...e.clipboardData.items].find((i) => i.type.startsWith("image/"));
+  if (item) {
+    e.preventDefault();
+    attach(item.getAsFile());
+  }
+});
+const chatView = $("#view-chat");
+let dragDepth = 0;
+chatView.addEventListener("dragenter", (e) => {
+  if (![...e.dataTransfer.types].includes("Files")) return;
+  dragDepth++;
+  $("#drop-overlay").hidden = false;
+});
+chatView.addEventListener("dragleave", () => {
+  if (--dragDepth <= 0) ($("#drop-overlay").hidden = true), (dragDepth = 0);
+});
+chatView.addEventListener("dragover", (e) => e.preventDefault());
+chatView.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  $("#drop-overlay").hidden = true;
+  const file = [...e.dataTransfer.files].find((f) => f.type.startsWith("image/"));
+  if (file) attach(file);
+});
+
+$("#composer").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (state.busy) return;
+  const text = textarea.value.trim();
+  const steer = $("#composer-steer").value.trim();
+  const attachment = state.attachment;
+  const editing = state.editing;
+  if (!text && !attachment) return textarea.focus();
+
+  const chosenClientId =
+    state.route.view === "client" ? state.route.clientId : Number($("#composer-client").value) || null;
+
+  textarea.value = "";
+  autosize();
+  state.attachment = null; // its preview URL stays alive until this turn finishes
+  state.editing = null;
+  renderAttachments();
+
+  if (attachment) {
+    // With a screenshot, anything typed alongside it is treated as a steer.
+    await runScreenshot(attachment, chosenClientId, [steer, text].filter(Boolean).join(". "));
+    URL.revokeObjectURL(attachment.url);
+  } else {
+    if (!chosenClientId) {
+      liveTurn({ objection: text }).fail("Pick the client from the selector next to ＋, or attach a screenshot so it can be detected.");
+      return;
+    }
+    await runTurn({
+      clientId: chosenClientId,
+      objection: text,
+      threadContext: editing?.threadContext ?? "",
+      prospect: editing?.prospect ?? "",
+      imageId: editing?.imageId ?? null,
+      guidance: steer,
+    });
+  }
+});
+
+// ================================================================ the pipeline, as a live chat turn
+
+/** A provisional turn at the bottom of the thread while work is in progress. */
+function liveTurn(bubble) {
+  $("#hero").hidden = true;
+  $("#view-chat").classList.remove("is-empty");
+  const steps = el("div", { class: "pending" });
+  const node = el("div", { class: "turn live" }, userBubble(bubble), el("div", { class: "assistant" }, steps));
+  $("#thread").append(node);
+  scrollToBottom();
+  return {
+    node,
+    steps(names) {
+      steps.replaceChildren(...names.map((n) => el("div", { class: "step", "data-step": n }, n)));
+    },
+    set(name, status) {
+      const s = steps.querySelector(`[data-step="${name}"]`);
+      if (s) s.className = `step ${status}`;
+    },
+    fail(msg) {
+      steps.replaceWith(el("div", { class: "notice error" }, msg));
+      scrollToBottom();
+    },
+    replace(content) {
+      steps.replaceWith(content);
+      scrollToBottom();
+    },
+    remove() {
+      node.remove();
+    },
+  };
+}
+
+async function runScreenshot(attachment, chosenClientId, guidance) {
+  state.busy = true;
+  const live = liveTurn({ imageUrl: attachment.url, guidance });
+  live.steps(["Reading screenshot", "Matching client", "Writing three replies"]);
+  live.set("Reading screenshot", "active");
+  try {
+    const form = new FormData();
+    form.append("screenshot", attachment.file);
+    const { extraction, match, imageId } = await api("/api/analyze", { method: "POST", body: form });
+    live.set("Reading screenshot", "done");
+
+    const ctx = {
+      objection: extraction.objection_text,
+      threadContext: extraction.thread_context,
+      prospect: [extraction.prospect_name, extraction.prospect_headline].filter(Boolean).join(" - "),
+      imageId,
+      guidance,
+      channel: extraction.channel,
+    };
+    if (extraction.notes) toast(extraction.notes);
+
+    // An explicit choice (or the open chat) wins; otherwise use the detected client.
+    let clientId = chosenClientId;
+    if (chosenClientId && match.clientId && match.clientId !== chosenClientId) {
+      const detected = state.clients.find((c) => c.id === match.clientId);
+      toast(`Screenshot looks like ${detected?.name}'s conversation. Writing for ${currentClient()?.name ?? "the chosen client"}; change it with Edit if needed.`);
+    }
+    clientId ??= match.clientId;
+
+    if (!clientId) {
+      state.busy = false;
+      live.replace(pickClientNotice(extraction, match, (id) => (live.remove(), runTurn({ ...ctx, clientId: id }))));
+      return;
+    }
+    live.set("Matching client", "done");
+    live.remove();
+    state.busy = false;
+    await runTurn({ ...ctx, clientId });
+  } catch (err) {
+    state.busy = false;
+    live.fail(`${err.message} You can also type the objection instead.`);
+  }
+}
+
+function pickClientNotice(extraction, match, onPick) {
+  const select = el(
+    "select",
+    {},
+    el("option", { value: "" }, "Choose a client…"),
+    ...state.clients.map((c) => el("option", { value: c.id }, c.name)),
+  );
+  const top = match.candidates.find((c) => c.score >= 0.5);
+  if (top) select.value = top.id;
+  const seen = extraction.client_name ? `I read "${extraction.client_name}" as the sender, but that` : "I couldn't see the client's name, so this";
+  return el(
+    "div",
+    { class: "notice" },
+    el("div", {}, state.clients.length ? `${seen} doesn't match a client on file. Whose conversation is it?` : "There are no clients on file yet. Add one under Manage clients first."),
+    extraction.objection_text && el("div", { class: "muted small" }, `Objection: “${extraction.objection_text}”`),
+    state.clients.length &&
+      el(
+        "div",
+        { class: "row" },
+        select,
+        el("button", { class: "primary", onclick: () => select.value && onPick(Number(select.value)) }, "Write replies"),
+      ),
+  );
+}
+
+async function runTurn(ctx) {
+  state.busy = true;
+  // Make sure we're looking at the right chat before the reply lands.
+  if (state.route.view !== "client" || state.route.clientId !== ctx.clientId) {
+    history.replaceState(null, "", `#/client/${ctx.clientId}`);
+    await route();
+  }
+  const live = liveTurn({
+    imageUrl: ctx.imageId ? `/api/images/${ctx.imageId}` : null,
+    objection: ctx.objection,
+    prospect: ctx.prospect,
+    guidance: ctx.guidance,
+  });
+  live.steps(["Writing three replies"]);
+  live.set("Writing three replies", "active");
+  const [prospectName, ...headline] = (ctx.prospect || "").split(" - ");
+  try {
+    const turn = await api(
+      "/api/generate",
+      json("POST", {
+        clientId: ctx.clientId,
+        objection: ctx.objection,
+        threadContext: ctx.threadContext || "",
+        prospectName: prospectName?.trim() || null,
+        prospectHeadline: headline.join(" - ").trim() || null,
+        channel: ctx.channel,
+        guidance: ctx.guidance || "",
+        imageId: ctx.imageId || null,
+      }),
+    );
+    live.remove();
+    if (state.route.clientId === ctx.clientId) {
+      state.turns.push(turn);
+      $("#thread").append(turnView(turn));
+      scrollToBottom();
+    }
+    loadClients();
+  } catch (err) {
+    live.fail(err.message);
+  } finally {
+    state.busy = false;
+  }
+}
+
+// ================================================================ saved replies drawer
+
+$("#saved-btn").addEventListener("click", () => {
+  $("#saved-drawer").hidden = !$("#saved-drawer").hidden;
+  renderFavorites();
+});
+$("#saved-close").addEventListener("click", () => ($("#saved-drawer").hidden = true));
+$("#fav-filter").addEventListener("change", renderFavorites);
+
+function renderFavorites() {
+  const filter = $("#fav-filter").value;
+  const shown = state.favorites.filter((f) => !filter || f.strategy === filter);
+  $("#fav-list").replaceChildren(
+    ...(shown.length
+      ? shown.map(favoriteItem)
+      : [el("p", { class: "empty" }, state.favorites.length ? "None saved for this goal yet." : "Nothing saved yet. Star a reply in the chat to keep it here.")]),
+  );
+}
+
+function favoriteItem(fav) {
   return el(
     "div",
     { class: "fav" },
@@ -341,8 +673,8 @@ function favoriteItem(fav, onDelete) {
       "div",
       { class: "meta" },
       el("span", { class: "badge" }, GOALS[fav.strategy] || fav.strategy),
-      fav.prospect_name && el("span", {}, `to ${fav.prospect_name}`),
-      el("span", {}, fmtDate(fav.created_at)),
+      fav.prospect_name && el("span", {}, `to ${fav.prospect_name.split(" - ")[0]}`),
+      el("span", {}, relTime(fav.created_at)),
     ),
     fav.objection_text && el("div", { class: "objection" }, `“${fav.objection_text}”`),
     el("div", { class: "text" }, fav.response_text),
@@ -357,7 +689,10 @@ function favoriteItem(fav, onDelete) {
           onclick: async () => {
             if (!confirm("Remove this saved reply?")) return;
             await api(`/api/favorites/${fav.id}`, { method: "DELETE" });
-            onDelete();
+            state.favorites = state.favorites.filter((f) => f.id !== fav.id);
+            renderFavorites();
+            renderHeader();
+            renderThread();
           },
         },
         "Remove",
@@ -366,43 +701,21 @@ function favoriteItem(fav, onDelete) {
   );
 }
 
-async function loadFavoritesPanel() {
-  const clientId = Number($("#ctx-client").value);
-  const panel = $("#favorites-panel");
-  if (!clientId) {
-    panel.hidden = true;
-    return;
-  }
-  const client = state.clients.find((c) => c.id === clientId);
-  const favs = await api(`/api/clients/${clientId}/favorites`);
-  const filter = $("#fav-filter").value;
-  const shown = favs.filter((f) => !filter || f.strategy === filter);
-  $("#fav-client-name").textContent = client?.name ?? "";
-  $("#fav-list").replaceChildren(
-    ...(shown.length
-      ? shown.map((f) => favoriteItem(f, loadFavoritesPanel))
-      : [el("p", { class: "empty" }, favs.length ? "None saved for this goal yet." : "Nothing saved yet. Star a reply above to start this client's library.")]),
-  );
-  panel.hidden = false;
-}
-$("#fav-filter").addEventListener("change", loadFavoritesPanel);
-
-// ---------------------------------------------------------------- clients view
+// ================================================================ manage clients
 
 const clientForm = $("#client-form");
 
 function renderClientList() {
   const q = $("#client-search").value.toLowerCase();
-  const list = $("#client-list");
   const shown = state.clients.filter((c) =>
     [c.name, c.company, c.service_type, ...c.aliases].join(" ").toLowerCase().includes(q),
   );
-  list.replaceChildren(
+  $("#client-list").replaceChildren(
     ...(shown.length
       ? shown.map((c) =>
           el(
             "li",
-            { class: c.id === state.editingClientId ? "active" : "", onclick: () => editClient(c.id) },
+            { class: c.id === state.editingClientId ? "active" : "", onclick: () => (location.hash = `#/clients/${c.id}`) },
             el("span", {}, c.name),
             el("span", { class: "sub" }, [c.company, c.service_type].filter(Boolean).join(" · ") || "No details yet"),
           ),
@@ -412,38 +725,27 @@ function renderClientList() {
 }
 $("#client-search").addEventListener("input", renderClientList);
 
-function fillClientForm(client) {
+function editClient(id) {
+  const client = state.clients.find((c) => c.id === id) ?? null;
+  state.editingClientId = client?.id ?? null;
   for (const field of clientForm.elements) {
     if (!field.name) continue;
     const v = client?.[field.name];
     field.value = Array.isArray(v) ? v.join(", ") : (v ?? "");
   }
-}
-
-async function editClient(id) {
-  state.editingClientId = id;
-  const client = state.clients.find((c) => c.id === id);
-  fillClientForm(client);
   $("#client-form-title").textContent = client ? `Edit ${client.name}` : "Add a client";
   $("#delete-client").hidden = !client;
+  $("#open-chat").hidden = !client;
   $("#client-form-msg").textContent = "";
   renderClientList();
-  const favBox = $("#client-favs");
-  if (!client) {
-    favBox.hidden = true;
-    return;
-  }
-  const favs = await api(`/api/clients/${id}/favorites`);
-  $("#client-fav-list").replaceChildren(
-    ...(favs.length ? favs.map((f) => favoriteItem(f, () => editClient(id))) : [el("p", { class: "empty" }, "No saved replies yet.")]),
-  );
-  favBox.hidden = false;
 }
 
 $("#new-client").addEventListener("click", () => {
+  location.hash = "#/clients";
   editClient(null);
   clientForm.elements.name.focus();
 });
+$("#open-chat").addEventListener("click", () => (location.hash = `#/client/${state.editingClientId}`));
 
 clientForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -452,7 +754,8 @@ clientForm.addEventListener("submit", async (e) => {
   try {
     const saved = id ? await api(`/api/clients/${id}`, json("PUT", body)) : await api("/api/clients", json("POST", body));
     await loadClients();
-    await editClient(saved.id);
+    location.hash = `#/clients/${saved.id}`;
+    editClient(saved.id);
     toast(id ? "Client updated" : "Client added");
   } catch (err) {
     $("#client-form-msg").textContent = err.message;
@@ -461,14 +764,15 @@ clientForm.addEventListener("submit", async (e) => {
 
 $("#delete-client").addEventListener("click", async () => {
   const client = state.clients.find((c) => c.id === state.editingClientId);
-  if (!client || !confirm(`Remove ${client.name}? Their saved replies will be deleted too.`)) return;
+  if (!client || !confirm(`Remove ${client.name}? Their chat history and saved replies will be deleted too.`)) return;
   await api(`/api/clients/${client.id}`, { method: "DELETE" });
   await loadClients();
+  location.hash = "#/clients";
   editClient(null);
   toast("Client removed");
 });
 
-// ---------------------------------------------------------------- library view
+// ================================================================ library
 
 async function loadCorpus() {
   const docs = await api("/api/corpus");
@@ -517,6 +821,8 @@ $("#corpus-form").addEventListener("submit", async (e) => {
   }
 });
 
-// ---------------------------------------------------------------- boot
+// ================================================================ boot
 
-loadClients().catch((err) => showError(err.message));
+loadClients()
+  .then(route)
+  .catch((err) => toast(err.message));

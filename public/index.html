@@ -7,90 +7,89 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
+<div class="app">
+  <!-- ================= Sidebar ================= -->
+  <aside class="sidebar" id="sidebar">
     <div class="brand">Objection Master <span>Pro</span></div>
-    <nav class="tabs" role="tablist">
-      <button class="tab active" data-view="respond" role="tab">Respond</button>
-      <button class="tab" data-view="clients" role="tab">Clients</button>
-      <button class="tab" data-view="library" role="tab">Klaff Library</button>
+    <nav class="side-nav">
+      <a href="#/new" class="side-link" data-route="new"><span class="ico" aria-hidden="true">✎</span>New chat</a>
+      <a href="#/clients" class="side-link" data-route="clients"><span class="ico" aria-hidden="true">☰</span>Manage clients</a>
+      <a href="#/library" class="side-link" data-route="library"><span class="ico" aria-hidden="true">▤</span>Klaff library</a>
     </nav>
-  </header>
+    <input id="convo-search" class="side-search" placeholder="Search clients" />
+    <div class="side-label">Clients</div>
+    <ul id="convo-list" class="convo-list"></ul>
+  </aside>
+  <div class="scrim" id="scrim"></div>
 
-  <main>
-    <!-- ===== Respond ===== -->
-    <section id="view-respond" class="view active">
-      <div id="dropzone" class="dropzone" tabindex="0">
-        <input type="file" id="file-input" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
-        <div class="dz-inner">
-          <div class="dz-icon" aria-hidden="true">⇪</div>
-          <p class="dz-title">Drop a screenshot of the objection</p>
-          <p class="dz-sub">or click to choose a file, or paste with Ctrl/⌘+V</p>
+  <!-- ================= Main ================= -->
+  <main class="main">
+    <header class="main-head">
+      <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open sidebar">☰</button>
+      <div class="head-title">
+        <h1 id="head-name">New chat</h1>
+        <span id="head-sub" class="muted small"></span>
+      </div>
+      <div class="head-actions" id="head-actions" hidden>
+        <button id="saved-btn" class="ghost">★ Saved <span id="saved-count" class="count"></span></button>
+        <button id="edit-client-btn" class="ghost">Edit client</button>
+      </div>
+    </header>
+
+    <!-- ===== Chat ===== -->
+    <section id="view-chat" class="view chat">
+      <div id="chat-scroll" class="chat-scroll">
+        <div id="hero" class="hero">
+          <h2 id="hero-title">What objection are we handling?</h2>
+          <p id="hero-sub" class="muted">Paste or drop a screenshot of the LinkedIn reply. The client is picked up automatically.</p>
         </div>
-        <img id="preview" class="preview" alt="Uploaded screenshot" hidden />
+        <div id="thread" class="thread"></div>
       </div>
-      <p class="alt-entry"><button class="link" id="type-instead">No screenshot? Type the objection instead</button></p>
 
-      <div id="steps" class="steps" hidden>
-        <div class="step" data-step="read">Reading screenshot</div>
-        <div class="step" data-step="match">Matching client</div>
-        <div class="step" data-step="write">Writing three replies</div>
-      </div>
-      <div id="respond-error" class="error" hidden></div>
-
-      <div id="context" class="card context" hidden>
-        <div class="grid two">
-          <label>Client
-            <select id="ctx-client"></select>
-            <small id="match-note" class="muted"></small>
-          </label>
-          <label>Prospect
-            <input id="ctx-prospect" placeholder="Name, title / firm" />
-          </label>
+      <div class="composer-wrap">
+      <form id="composer" class="composer" autocomplete="off">
+        <div id="attachments" class="attachments" hidden></div>
+        <textarea id="composer-text" rows="1"
+          placeholder="Paste a screenshot (Ctrl/⌘+V), or type the prospect's message"></textarea>
+        <div class="composer-bar">
+          <button type="button" class="icon-btn" id="attach-btn" aria-label="Attach screenshot" title="Attach screenshot">＋</button>
+          <input type="file" id="file-input" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+          <select id="composer-client" class="pill-select" aria-label="Client"></select>
+          <input id="composer-steer" class="steer" placeholder="Steer (optional): shorter, mention the webinar…" />
+          <button type="submit" class="send-btn" id="send-btn" aria-label="Write replies" title="Write replies">↑</button>
         </div>
-        <label>Objection
-          <textarea id="ctx-objection" rows="3" placeholder="The prospect's latest message"></textarea>
-        </label>
-        <details>
-          <summary>Earlier messages in the thread</summary>
-          <textarea id="ctx-thread" rows="4" placeholder="Oldest first, one message per line"></textarea>
-        </details>
-        <div class="row">
-          <input id="ctx-guidance" class="grow" placeholder="Optional steer, e.g. &quot;shorter&quot; or &quot;mention the Q4 webinar&quot;" />
-          <button id="generate-btn" class="primary">Write replies</button>
-        </div>
+      </form>
+      <p class="composer-hint muted small">Enter to send · Shift+Enter for a new line · drop an image anywhere</p>
       </div>
-
-      <div id="results" hidden>
-        <p id="read-line" class="read-line"></p>
-        <div id="options" class="options"></div>
-        <p id="sources" class="muted small"></p>
-      </div>
-
-      <div id="favorites-panel" class="card" hidden>
-        <div class="row between">
-          <h3>Saved replies for <span id="fav-client-name"></span></h3>
-          <select id="fav-filter">
-            <option value="">All goals</option>
-            <option value="intro_call">Move to an intro call</option>
-            <option value="leave_door_open">Leave the door open</option>
-            <option value="continue_conversation">Continue the conversation</option>
-          </select>
-        </div>
-        <div id="fav-list" class="fav-list"></div>
-      </div>
+      <div id="drop-overlay" class="drop-overlay" hidden><div>Drop the screenshot</div></div>
     </section>
 
+    <!-- ===== Saved replies drawer ===== -->
+    <aside id="saved-drawer" class="drawer" hidden>
+      <div class="drawer-head">
+        <h3>Saved replies</h3>
+        <button class="icon-btn" id="saved-close" aria-label="Close">✕</button>
+      </div>
+      <select id="fav-filter">
+        <option value="">All goals</option>
+        <option value="intro_call">Move to an intro call</option>
+        <option value="leave_door_open">Leave the door open</option>
+        <option value="continue_conversation">Continue the conversation</option>
+      </select>
+      <div id="fav-list" class="fav-list"></div>
+    </aside>
+
     <!-- ===== Clients ===== -->
-    <section id="view-clients" class="view">
+    <section id="view-clients" class="view page">
       <div class="split">
-        <aside class="card">
+        <div class="card">
           <div class="row between">
             <h3>Clients</h3>
             <button id="new-client" class="small">+ Add</button>
           </div>
           <input id="client-search" placeholder="Search" />
           <ul id="client-list" class="client-list"></ul>
-        </aside>
+        </div>
         <div class="card">
           <form id="client-form" autocomplete="off">
             <h3 id="client-form-title">Add a client</h3>
@@ -136,7 +135,7 @@
               </label>
             </div>
             <label>Phrasing preferences, do's and don'ts
-              <textarea name="style_notes" rows="4" placeholder="e.g. Never says 'hope you're well'. Uses first names. Short sentences. Likes golf references. No exclamation points."></textarea>
+              <textarea name="style_notes" rows="4" placeholder="e.g. Never says 'hope you're well'. Uses first names. Short sentences. No exclamation points."></textarea>
             </label>
             <label>Sample messages in their voice
               <textarea name="sample_messages" rows="4" placeholder="Paste a few real messages the client has sent or approved"></textarea>
@@ -147,20 +146,17 @@
             <div class="row between">
               <button type="button" id="delete-client" class="danger" hidden>Remove client</button>
               <span class="grow"></span>
+              <button type="button" id="open-chat" class="ghost" hidden>Open chat</button>
               <button type="submit" class="primary">Save client</button>
             </div>
             <p id="client-form-msg" class="muted small"></p>
           </form>
-          <div id="client-favs" hidden>
-            <h3>Saved replies</h3>
-            <div id="client-fav-list" class="fav-list"></div>
-          </div>
         </div>
       </div>
     </section>
 
     <!-- ===== Library ===== -->
-    <section id="view-library" class="view">
+    <section id="view-library" class="view page">
       <div class="card">
         <h3>Klaff knowledge base</h3>
         <p class="muted">Every reply is written against this library. The core playbook is always included; the most relevant passages from everything else are pulled in per objection. Add more Klaff source material (course transcripts, notes, call recordings transcribed to text) as .docx, .md or .txt.</p>
@@ -177,8 +173,9 @@
       </div>
     </section>
   </main>
+</div>
 
-  <div id="toast" class="toast" hidden></div>
-  <script src="app.js" type="module"></script>
+<div id="toast" class="toast" hidden></div>
+<script src="app.js" type="module"></script>
 </body>
 </html>

@@ -22,6 +22,10 @@ export interface AiBackend {
   generate: (input: GenerateInput) => Promise<Generation>;
 }
 
+/** Stored screenshot filenames: a random id plus extension, nothing user-controlled. */
+const IMAGE_ID = /^[a-f0-9]{32}\.(png|jpg|gif|webp)$/;
+const IMAGE_EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
+
 const ClientBody = z.object({
   name: z.string().trim().min(1, "Name is required"),
   aliases: z
@@ -48,6 +52,8 @@ const GenerateBody = z.object({
   prospectHeadline: z.string().nullable().optional(),
   channel: z.string().optional(),
   guidance: z.string().optional(),
+  /** Screenshot saved by /api/analyze, shown with this turn in the chat history. */
+  imageId: z.string().regex(IMAGE_ID).optional().nullable(),
 });
 
 const FavoriteBody = z.object({
@@ -56,6 +62,7 @@ const FavoriteBody = z.object({
   objection: z.string().default(""),
   response: z.string().trim().min(1),
   prospectName: z.string().nullable().optional(),
+  turnId: z.coerce.number().int().positive().optional().nullable(),
 });
 
 /** Sync every markdown file in corpus/ into the store. Files named core-* are always-included. */
@@ -86,8 +93,14 @@ type Handler = (req: Request, res: Response) => Promise<unknown> | unknown;
 const route = (fn: Handler) => (req: Request, res: Response, next: NextFunction) =>
   Promise.resolve(fn(req, res)).catch(next);
 
-export function createApp(store: Store, ai: AiBackend, opts: { password?: string } = {}) {
+export function createApp(
+  store: Store,
+  ai: AiBackend,
+  opts: { password?: string; uploadsDir?: string } = {},
+) {
   const app = express();
+  const uploadsDir = opts.uploadsDir ?? path.join(ROOT, "data", "uploads");
+  fs.mkdirSync(uploadsDir, { recursive: true });
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
   let index: Bm25Index | null = null;
@@ -153,6 +166,7 @@ export function createApp(store: Store, ai: AiBackend, opts: { password?: string
         objection_text: body.objection,
         response_text: body.response,
         prospect_name: body.prospectName ?? "",
+        generation_id: body.turnId && store.getTurn(body.turnId) ? body.turnId : null,
       });
       res.status(201).json(fav);
     }),
@@ -176,7 +190,11 @@ export function createApp(store: Store, ai: AiBackend, opts: { password?: string
       const clients = store.listClients();
       const extraction = await ai.extract({ data: req.file.buffer, mimeType: req.file.mimetype }, clients.map((c) => c.name));
       const match = matchClient([extraction.client_match, extraction.client_name], clients);
+      // Keep the screenshot so the chat history can show it next to the replies.
+      const imageId = `${crypto.randomBytes(16).toString("hex")}.${IMAGE_EXT[req.file.mimetype]}`;
+      fs.writeFileSync(path.join(uploadsDir, imageId), req.file.buffer);
       res.json({
+        imageId,
         extraction,
         match: { clientId: match.client?.id ?? null, score: match.score, candidates: match.candidates },
         favorites: match.client ? store.listFavorites(match.client.id, 20) : [],
@@ -208,14 +226,46 @@ export function createApp(store: Store, ai: AiBackend, opts: { password?: string
         coreStyle: store.chunks(true),
         excerpts,
       });
-      const generationId = store.logGeneration(client.id, body.objection, result);
-      res.json({
-        generationId,
+      const imageId = body.imageId && fs.existsSync(path.join(uploadsDir, body.imageId)) ? body.imageId : "";
+      const turn = store.addTurn({
+        client_id: client.id,
+        objection_text: body.objection,
+        prospect_name: [body.prospectName, body.prospectHeadline].filter(Boolean).join(" - "),
+        thread_context: body.threadContext,
+        guidance: body.guidance ?? "",
+        image: imageId,
         result,
         sources: excerpts.map((c) => ({ document: c.document_title, section: c.heading })),
       });
+      res.json(turn);
     }),
   );
+
+  // ---- chat history ----
+
+  app.get("/api/conversations", (_req, res) => {
+    res.json(store.listConversations());
+  });
+
+  app.get("/api/clients/:id/turns", (req, res) => {
+    const clientId = Number(req.params.id);
+    if (!store.getClient(clientId)) return res.status(404).json({ error: "Client not found" });
+    res.json({ turns: store.listTurns(clientId), favorites: store.listFavorites(clientId) });
+  });
+
+  app.delete("/api/turns/:id", (req, res) => {
+    const turn = store.deleteTurn(Number(req.params.id));
+    if (!turn) return res.status(404).json({ error: "Not found" });
+    if (turn.image && IMAGE_ID.test(turn.image)) fs.rmSync(path.join(uploadsDir, turn.image), { force: true });
+    res.status(204).end();
+  });
+
+  app.get("/api/images/:id", (req, res) => {
+    if (!IMAGE_ID.test(req.params.id)) return res.status(404).end();
+    const file = path.join(uploadsDir, req.params.id);
+    if (!fs.existsSync(file)) return res.status(404).end();
+    res.set("Cache-Control", "private, max-age=31536000, immutable").sendFile(file);
+  });
 
   // ---- Klaff corpus ----
 

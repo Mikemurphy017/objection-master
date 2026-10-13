@@ -32,7 +32,30 @@ export interface Favorite {
   objection_text: string;
   response_text: string;
   prospect_name: string;
+  generation_id: number | null;
   created_at: string;
+}
+
+/** One turn in a client's chat: the objection that came in and the three replies written for it. */
+export interface Turn {
+  id: number;
+  client_id: number | null;
+  objection_text: string;
+  prospect_name: string;
+  thread_context: string;
+  guidance: string;
+  image: string;
+  result: unknown;
+  sources: { document: string; section: string }[];
+  created_at: string;
+}
+
+export interface Conversation {
+  client_id: number;
+  name: string;
+  company: string;
+  turns: number;
+  last_at: string | null;
 }
 
 export interface CorpusDocument {
@@ -105,6 +128,16 @@ CREATE TABLE IF NOT EXISTS generations (
 );
 `;
 
+/** Columns added after the first release; applied to existing databases on startup. */
+const MIGRATIONS: { table: string; column: string; ddl: string }[] = [
+  { table: "generations", column: "prospect_name", ddl: "TEXT NOT NULL DEFAULT ''" },
+  { table: "generations", column: "thread_context", ddl: "TEXT NOT NULL DEFAULT ''" },
+  { table: "generations", column: "guidance", ddl: "TEXT NOT NULL DEFAULT ''" },
+  { table: "generations", column: "image", ddl: "TEXT NOT NULL DEFAULT ''" },
+  { table: "generations", column: "sources", ddl: "TEXT NOT NULL DEFAULT '[]'" },
+  { table: "favorites", column: "generation_id", ddl: "INTEGER REFERENCES generations(id) ON DELETE SET NULL" },
+];
+
 /** Chunk size for retrieval, in words, with overlap so ideas aren't cut in half. */
 const CHUNK_WORDS = 280;
 const CHUNK_OVERLAP = 40;
@@ -122,6 +155,14 @@ export function chunkText(text: string): string[] {
 
 type Row = Record<string, unknown>;
 
+function rowToTurn(r: Row): Turn {
+  return {
+    ...(r as unknown as Turn),
+    result: JSON.parse(String(r.result)),
+    sources: JSON.parse(String(r.sources ?? "[]")),
+  };
+}
+
 function rowToClient(r: Row): Client {
   return { ...(r as unknown as Client), aliases: JSON.parse(String(r.aliases ?? "[]")) };
 }
@@ -136,6 +177,13 @@ export class Store {
     this.db = new DatabaseSync(file);
     this.db.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;");
     this.db.exec(SCHEMA);
+    for (const m of MIGRATIONS) {
+      const cols = this.db.prepare(`PRAGMA table_info(${m.table})`).all() as { name: string }[];
+      if (!cols.some((c) => c.name === m.column)) {
+        this.db.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.ddl}`);
+      }
+    }
+    this.db.exec("CREATE INDEX IF NOT EXISTS generations_client ON generations(client_id, created_at)");
   }
 
   // ---- clients ----
@@ -210,23 +258,72 @@ export class Store {
   addFavorite(f: Omit<Favorite, "id" | "created_at">): Favorite {
     return this.db
       .prepare(
-        `INSERT INTO favorites (client_id, strategy, objection_text, response_text, prospect_name)
-         VALUES (?, ?, ?, ?, ?) RETURNING *`,
+        `INSERT INTO favorites (client_id, strategy, objection_text, response_text, prospect_name, generation_id)
+         VALUES (?, ?, ?, ?, ?, ?) RETURNING *`,
       )
-      .get(f.client_id, f.strategy, f.objection_text, f.response_text, f.prospect_name) as unknown as Favorite;
+      .get(
+        f.client_id,
+        f.strategy,
+        f.objection_text,
+        f.response_text,
+        f.prospect_name,
+        f.generation_id,
+      ) as unknown as Favorite;
   }
 
   deleteFavorite(id: number): boolean {
     return this.db.prepare("DELETE FROM favorites WHERE id = ?").run(id).changes > 0;
   }
 
-  // ---- generations log ----
+  // ---- chat history (one turn per objection answered) ----
 
-  logGeneration(clientId: number | null, objection: string, result: unknown): number {
+  addTurn(t: Omit<Turn, "id" | "created_at">): Turn {
     const r = this.db
-      .prepare("INSERT INTO generations (client_id, objection_text, result) VALUES (?, ?, ?) RETURNING id")
-      .get(clientId, objection, JSON.stringify(result)) as { id: number };
-    return r.id;
+      .prepare(
+        `INSERT INTO generations (client_id, objection_text, prospect_name, thread_context, guidance, image, result, sources)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      )
+      .get(
+        t.client_id,
+        t.objection_text,
+        t.prospect_name,
+        t.thread_context,
+        t.guidance,
+        t.image,
+        JSON.stringify(t.result),
+        JSON.stringify(t.sources),
+      ) as { id: number };
+    return this.getTurn(r.id)!;
+  }
+
+  getTurn(id: number): Turn | undefined {
+    const r = this.db.prepare("SELECT * FROM generations WHERE id = ?").get(id);
+    return r ? rowToTurn(r) : undefined;
+  }
+
+  listTurns(clientId: number): Turn[] {
+    return this.db
+      .prepare("SELECT * FROM generations WHERE client_id = ? ORDER BY created_at, id")
+      .all(clientId)
+      .map(rowToTurn);
+  }
+
+  deleteTurn(id: number): Turn | undefined {
+    const turn = this.getTurn(id);
+    if (turn) this.db.prepare("DELETE FROM generations WHERE id = ?").run(id);
+    return turn;
+  }
+
+  /** Every client as a sidebar conversation, most recently active first. */
+  listConversations(): Conversation[] {
+    return this.db
+      .prepare(
+        `SELECT c.id AS client_id, c.name, c.company, COUNT(g.id) AS turns, MAX(g.created_at) AS last_at
+         FROM clients c LEFT JOIN generations g ON g.client_id = c.id
+         GROUP BY c.id
+         ORDER BY last_at IS NULL, last_at DESC, c.name COLLATE NOCASE`,
+      )
+      .all() as unknown as Conversation[];
   }
 
   // ---- corpus ----

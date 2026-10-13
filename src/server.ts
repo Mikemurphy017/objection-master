@@ -21,7 +21,10 @@ if (!process.env.APP_PASSWORD) {
 }
 
 const backend = selectBackend();
-const app = createApp(store, backend, { password: process.env.APP_PASSWORD });
+const app = createApp(store, backend, {
+  password: process.env.APP_PASSWORD,
+  uploadsDir: path.join(dataDir, "uploads"),
+});
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => {
   const docs = store.listDocuments();

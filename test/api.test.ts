@@ -2,6 +2,9 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Store } from "../src/db.ts";
 import { createApp, syncRepoCorpus, type AiBackend } from "../src/app.ts";
 import type { GenerateInput } from "../src/ai/generate.ts";
@@ -43,7 +46,7 @@ const post = (path: string, body: unknown) =>
 before(async () => {
   const store = new Store(":memory:");
   await syncRepoCorpus(store);
-  server = createApp(store, fakeAi).listen(0);
+  server = createApp(store, fakeAi, { uploadsDir: fs.mkdtempSync(path.join(os.tmpdir(), "om-test-")) }).listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 after(() => server.close());
@@ -77,14 +80,44 @@ test("full flow: add client, analyze screenshot, generate, favorite, reuse", asy
   assert.ok(lastGenerateInput!.excerpts.length > 0, "transcript excerpts retrieved");
   assert.equal(lastGenerateInput!.favorites.length, 0);
 
+  // The turn is saved to the client's chat history along with its screenshot.
+  assert.match(analyzed.imageId, /^[a-f0-9]{32}\.png$/);
+  const turnRes = await post("/api/generate", {
+    clientId: client.id,
+    objection: "We already work with an agency",
+    prospectName: "Dana Lee",
+    imageId: analyzed.imageId,
+  });
+  const turn = await turnRes.json();
+  assert.equal(turn.image, analyzed.imageId);
+  const img = await fetch(`${base}/api/images/${turn.image}`);
+  assert.equal(img.status, 200);
+  assert.equal(Buffer.from(await img.arrayBuffer()).toString(), "fake-png");
+  assert.equal((await fetch(`${base}/api/images/..%2Fsecret.png`)).status, 404);
+  assert.equal((await post("/api/generate", { clientId: client.id, objection: "x", imageId: "../etc/passwd" })).status, 400);
+
   // Favorite one, and it is fed back into the next generation as style signal.
   const fav = await post("/api/favorites", {
     clientId: client.id,
     strategy: "leave_door_open",
     objection: "We already work with an agency",
     response: "Then you're probably covered.",
+    turnId: turn.id,
   });
   assert.equal(fav.status, 201);
+  assert.equal((await fav.json()).generation_id, turn.id);
+
+  const history = await (await fetch(`${base}/api/clients/${client.id}/turns`)).json();
+  assert.equal(history.turns.length, 2);
+  assert.equal(history.turns[1].prospect_name, "Dana Lee");
+  assert.equal(history.favorites[0].generation_id, turn.id);
+  const convos = await (await fetch(`${base}/api/conversations`)).json();
+  assert.equal(convos[0].client_id, client.id);
+  assert.equal(convos[0].turns, 2);
+
+  // Deleting a turn removes its screenshot; the saved reply survives, unlinked.
+  assert.equal((await fetch(`${base}/api/turns/${turn.id}`, { method: "DELETE" })).status, 204);
+  assert.equal((await fetch(`${base}/api/images/${turn.image}`)).status, 404);
   const favs = await (await fetch(`${base}/api/clients/${client.id}/favorites`)).json();
   assert.equal(favs.length, 1);
   await post("/api/generate", { clientId: client.id, objection: "too busy" });
@@ -134,7 +167,10 @@ test("corpus upload adds a searchable document that can be removed", async () =>
 });
 
 test("password protection guards the API but not the health check", async () => {
-  const guarded = createApp(new Store(":memory:"), fakeAi, { password: "s3cret" }).listen(0);
+  const guarded = createApp(new Store(":memory:"), fakeAi, {
+    password: "s3cret",
+    uploadsDir: fs.mkdtempSync(path.join(os.tmpdir(), "om-test-")),
+  }).listen(0);
   const url = `http://127.0.0.1:${(guarded.address() as AddressInfo).port}`;
   try {
     assert.equal((await fetch(url + "/api/health")).status, 200);
