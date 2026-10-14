@@ -53,6 +53,18 @@ test("planImport maps common headers, leaves the rest blank, and flags what's mi
   assert.deepEqual(plan.counts, { new: 1, existing: 1, duplicate: 1, invalid: 1 });
 });
 
+test("planImport understands the app's own long form labels as headers", () => {
+  const csv =
+    'Name (as it appears on LinkedIn),Other names / spellings,Company,Country (where they\'re based),Service type,Who they target,Tone,Formality,"Phrasing preferences, do\'s and don\'ts"\n' +
+    'Jason Kelso,,Merrill Lynch,United States,Exit planning,"Business Owners\nFounders",Consultative,,Lead with questions\n';
+  const plan = planImport(csv, []);
+  assert.deepEqual(plan.columns.map((c) => c.field), [
+    "name", "aliases", "company", "country", "service_type", "target_audience", "tone", "formality", "style_notes",
+  ]);
+  assert.equal(plan.rows[0].client.target_audience, "Business Owners\nFounders");
+  assert.equal(plan.rows[0].client.style_notes, "Lead with questions");
+});
+
 test("planImport reads a country column", () => {
   const plan = planImport("Name,Based in\nRachelle Allen,Canada\n", []);
   assert.equal(plan.columns[1].field, "country");

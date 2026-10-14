@@ -26,7 +26,7 @@ const HEADER_ALIASES: Record<Field, string[]> = {
   target_audience: ["target audience", "audience", "target", "target market", "icp", "ideal client", "ideal client profile", "niche", "who they target", "prospects"],
   tone: ["tone", "voice", "tone of voice", "messaging tone", "style"],
   formality: ["formality", "formality level", "register"],
-  style_notes: ["style notes", "notes", "messaging notes", "phrasing", "phrasing preferences", "dos and donts", "do and dont", "preferences", "messaging preferences", "messaging style", "guidelines"],
+  style_notes: ["style notes", "notes", "messaging notes", "phrasing", "phrasing preferences", "dos and donts", "do and dont", "do s and don ts", "preferences", "messaging preferences", "messaging style", "guidelines"],
   sample_messages: ["sample messages", "sample message", "examples", "example messages", "sample copy", "messages"],
   country: ["country", "location", "based in", "region", "nation", "country of residence", "market"],
   booking_link: ["booking link", "booking", "calendly", "calendly link", "calendar link", "scheduling link", "meeting link", "book a call", "booking url", "calendar"],
@@ -34,7 +34,21 @@ const HEADER_ALIASES: Record<Field, string[]> = {
 
 const FORMALITY_VALUES = ["Very casual", "Casual", "Conversational professional", "Formal"];
 
-const headerKey = (h: string) => h.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const headerKey = (h: string) =>
+  h
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+/**
+ * A header matches a field when it equals one of the field's names or starts
+ * with one followed by more words, so the app's own long labels work too:
+ * "Name (as it appears on LinkedIn)", "Country (where they're based)",
+ * "Phrasing preferences, do's and don'ts".
+ */
+const headerMatches = (key: string, field: Field) =>
+  HEADER_ALIASES[field].some((alias) => key === alias || key.startsWith(`${alias} `));
 
 /** RFC 4180-style CSV: quoted fields, doubled quotes, newlines inside quotes, BOM, CRLF. */
 export function parseCsv(text: string): string[][] {
@@ -112,7 +126,7 @@ export function planImport(text: string, existing: Client[]): ImportPlan {
   const used = new Set<Field>();
   const columns = header.map((h) => {
     const key = headerKey(h);
-    const field = (IMPORT_FIELDS.find((f) => !used.has(f) && HEADER_ALIASES[f].includes(key)) ?? null) as Field | null;
+    const field = (IMPORT_FIELDS.find((f) => !used.has(f) && headerMatches(key, f)) ?? null) as Field | null;
     if (field) used.add(field);
     return { header: h.trim(), field };
   });
