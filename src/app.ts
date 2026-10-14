@@ -15,6 +15,7 @@ import type { GenerateInput, Generation } from "./ai/generate.ts";
 import { GenerationError } from "./ai/errors.ts";
 import { DEFAULT_OWNER_EMAIL, setupAuth, type AuthOptions } from "./auth.ts";
 import { TEMPLATE_CSV, fillBlanks, planImport } from "./clients-csv.ts";
+import { polishGeneration } from "./ai/polish.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(here, "..");
@@ -273,7 +274,7 @@ export function createApp(
       const excerpts = retrieveExcerpts(await corpusIndex(), body.objection, body.threadContext, client.service_type);
       const favorites = await store.listFavorites(client.id, 8);
 
-      const result = await ai.generate({
+      const result = polishGeneration(await ai.generate({
         client,
         objection: body.objection,
         threadContext: body.threadContext,
@@ -284,7 +285,7 @@ export function createApp(
         favorites,
         coreStyle: await store.chunks(true),
         excerpts,
-      });
+      }));
       const imageId = body.imageId && (await images.exists(body.imageId)) ? body.imageId : "";
       const turn = await store.addTurn({
         client_id: client.id,

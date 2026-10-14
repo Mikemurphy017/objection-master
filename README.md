@@ -29,7 +29,7 @@ Open http://localhost:3000, add a client on the **Clients** tab, then go to **Re
 | `ANTHROPIC_API_KEY` | Optional. When set, Claude reads the screenshots (and writes replies if there's no OpenAI key). |
 | `GENERATION_PROVIDER` / `EXTRACTION_PROVIDER` | Force a provider per step: `openai` or `anthropic`. |
 | `OPENAI_MODEL` | Default `gpt-5`. If OpenAI also reads screenshots, the model needs vision and structured outputs. |
-| `OPENAI_REASONING_EFFORT` | Optional, reasoning models only (`minimal`/`low`/`medium`/`high`). |
+| `OPENAI_REASONING_EFFORT` | Optional. Reasoning models (gpt-5, o-series) default to `low` for replies and `minimal` for screenshots, with low verbosity, for fast replies. |
 | `ADMIN_EMAIL` | The one account that can open `/admin` and manage access. Default `mike@bluestonepartnersllc.com`. |
 | `ADMIN_PASSWORD` | Optional. Sets the owner's first password. Without it, the server log prints a one-time setup link on first start. |
 | `DATABASE_URL` | Postgres connection string. When set, all data (clients, chat turns, saved replies, corpus) lives in Postgres instead of SQLite. See **Storage** below. |
@@ -37,7 +37,7 @@ Open http://localhost:3000, add a client on the **Clients** tab, then go to **Re
 | `BUCKET`, `ENDPOINT`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION` | S3-compatible bucket for screenshots (the names Railway Buckets expose). `S3_*`/`AWS_*` equivalents also work; see **Storage**. |
 | `DATA_DIR` | Fallback storage when the above aren't set: the SQLite file and `uploads/` screenshots (default `./data`). |
 | `CLAUDE_MODEL` | Default `claude-opus-5-5` (steps running on Claude only). |
-| `GENERATION_EFFORT` | Claude effort for replies: `low` / `medium` (default) / `high`. |
+| `GENERATION_EFFORT` | Claude effort for replies: `low` (default, fastest) / `medium` / `high`. |
 | `CORPUS_EXCERPTS` | Klaff passages retrieved per objection (default 6). |
 
 ### Storage
@@ -96,6 +96,7 @@ client profile + saved favorites + core Klaff playbook + retrieved Klaff passage
 - **Client store** (`src/db.ts`; SQLite locally, Postgres in production): name, alternate spellings, company, service type, target audience, tone, formality, phrasing do's and don'ts, sample messages, optional booking link. Matching uses the name and the alternate spellings, so add any variant that shows up on LinkedIn.
 - **If the name doesn't match** (or two clients are equally close), the app doesn't guess. It asks you to pick the client from the dropdown. Every extracted field stays editable before you regenerate, and **Type the objection instead** skips the screenshot entirely.
 - **Klaff corpus** (`corpus/`, plus uploads on the **Klaff Library** tab):
+  - `core-texttonality-framework.md` is sent with every request and governs tone, length and formatting (2 to 3 short lines, one idea, spaced lines, no em dashes, tone by lead status, banned AI-sounding phrases). Where it and the Klaff material disagree, TextTonality wins.
   - `core-klaff-style-playbook.md` is sent with every request. It distills the cold-outreach course, *Pitch Anything* and *Flip the Script* into working rules, written in our own words (frames, status, prizing, intrigue, push-pull, no-neediness, anti-bot tells, an objection-reading table, and industry lingo banks).
   - `klaff-sales-outreach-training-transcripts.md` is the cleaned course transcripts (timestamps stripped, duplicate section removed). It's chunked and searched with BM25, and the most relevant passages are included for each objection.
   - Any file in `corpus/` whose name starts with `core-` is always included. Other files are retrieved by relevance. Files are synced into the database on startup.

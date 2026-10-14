@@ -9,8 +9,29 @@ import { GenerationSchema, buildSystem, buildUserPrompt, type GenerateInput, typ
 export const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5";
 
 type Effort = "minimal" | "low" | "medium" | "high";
-/** Only sent when set: non-reasoning models (e.g. gpt-4o) reject the reasoning parameter. */
+
+/**
+ * Speed settings. Replies are short, so deep reasoning mostly adds wait time:
+ * reasoning models (gpt-5, o-series) default to low effort for replies and minimal
+ * for reading screenshots, plus low verbosity. Override with OPENAI_REASONING_EFFORT.
+ * Non-reasoning models (e.g. gpt-4o) reject these parameters, so they're omitted there.
+ */
+const IS_REASONING_MODEL = /^(gpt-5|o\d)/.test(OPENAI_MODEL);
+const IS_GPT5 = OPENAI_MODEL.startsWith("gpt-5");
 const REASONING_EFFORT = process.env.OPENAI_REASONING_EFFORT as Effort | undefined;
+function speedParams(defaultEffort: Effort) {
+  const effort = REASONING_EFFORT ?? (IS_REASONING_MODEL ? defaultEffort : undefined);
+  return {
+    ...(effort && { reasoning: { effort } }),
+    ...(IS_GPT5 && { verbosity: "low" as const }),
+  };
+}
+
+/** The `text` (format + verbosity) and `reasoning` request fields for a call. */
+function withSpeed<F>(format: F, defaultEffort: Effort) {
+  const { verbosity, ...rest } = speedParams(defaultEffort);
+  return { text: { format, ...(verbosity && { verbosity }) }, ...rest };
+}
 
 let client: OpenAI | null = null;
 function getOpenAI(): OpenAI {
@@ -79,8 +100,7 @@ export async function extractWithOpenAI(
           ],
         },
       ],
-      text: { format: zodTextFormat(ExtractionSchema, "screenshot_extraction") },
-      ...(REASONING_EFFORT && { reasoning: { effort: "low" as Effort } }),
+      ...withSpeed(zodTextFormat(ExtractionSchema, "screenshot_extraction"), "minimal"),
     });
     return parsedOrThrow(response, "read this screenshot");
   } catch (err) {
@@ -95,8 +115,7 @@ export async function generateWithOpenAI(input: GenerateInput): Promise<Generati
       // Identical on every request, so OpenAI's automatic prefix caching applies.
       instructions: buildSystem(input.coreStyle),
       input: buildUserPrompt(input),
-      text: { format: zodTextFormat(GenerationSchema, "objection_replies") },
-      ...(REASONING_EFFORT && { reasoning: { effort: REASONING_EFFORT } }),
+      ...withSpeed(zodTextFormat(GenerationSchema, "objection_replies"), "low"),
     });
     return parsedOrThrow(response, "answer this one");
   } catch (err) {

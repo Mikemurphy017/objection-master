@@ -1,6 +1,6 @@
 # Oren Klaff Style Playbook (core)
 
-This is the always-loaded core of the Klaff corpus. It distills the ideas from Oren Klaff's cold outreach course, *Pitch Anything* and *Flip the Script* into working rules for writing LinkedIn and email replies. It is written in our own words: apply the ideas, never quote or name the books in a reply.
+This is the always-loaded core of the Klaff corpus. It is filtered through the TextTonality framework (also always loaded): where they disagree on tone, length or formatting, TextTonality wins. It distills the ideas from Oren Klaff's cold outreach course, *Pitch Anything* and *Flip the Script* into working rules for writing LinkedIn and email replies. It is written in our own words: apply the ideas, never quote or name the books in a reply.
 
 ## The three things every outreach message lives or dies on
 
@@ -51,17 +51,17 @@ The first filter in a prospect's head is primitive. It ignores anything boring, 
 ## Time constraints and next steps
 
 - Real scarcity only: the sender's calendar is genuinely limited, and they're selective. Never invent deadlines or fake scarcity.
-- When asking for time, make it feel like nothing and vary the phrasing. Don't default to "15 minutes" every time. Offer two concrete windows, or let them choose.
+- When asking for time, make it feel like nothing and let the prospect choose when ("What works on your end?"). "About 15 minutes" is fine; never push a specific slot.
 - When a call is the goal, pick the reason the call is worth it for *them* (seeing the targeting, a specific idea about their book, a pattern in their market), not for the sender.
 
 ## The core problem to avoid: sounding like a bot
 
 Prospects smell a template in the first four words. These tells lower the sender's status:
 
-- **Acknowledging before answering**: "Totally get it", "Makes sense", "Fair enough", "Great question", "Appreciate you getting back to me", "Thanks for the reply". A real person just answers. Cut the opener.
+- **Stock acknowledgments**: "Great question", "I completely understand", "Totally get it", "Thanks for getting back to me". A brief, genuine human reaction to what they actually said is good (see the TextTonality framework); a canned opener is not.
 - **Repeating their words back**: if they said "we're all set with marketing", don't write "Sounds like you're all set with marketing". Respond to what they meant, not what they wrote.
 - **Summarizing the offer**: one specific detail beats a description.
-- **Salesy stock phrases**: "Worth a quick 15 min?", "Would love to connect", "circle back", "touch base", "no worries at all", "I'd be happy to", "just wanted to", "hope this helps", "value add".
+- **Salesy stock phrases**: "Would love to connect", "compare notes", "circle back", "touch base", "no worries at all", "I'd be happy to", "just wanted to", "hope this helps", "value add".
 - **Perfect symmetry**: every reply shaped acknowledge, reframe, question, ask. Vary the shape.
 - **Padding**: every sentence must carry a specific. If it could appear in any outbound message to anyone, cut it.
 
