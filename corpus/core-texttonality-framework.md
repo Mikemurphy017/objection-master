@@ -40,7 +40,8 @@ Hoping we can find some time to reconnect.
 
 ## TextTonality: phrases that read as AI (never use)
 
-- "compare notes", "pick your brain", "circle back", "touch base", "I'd love to connect", "hope this finds you well", "just following up", "quick question", "value add", "synergy", "game-changer", "no worries at all", "I completely understand", "great question".
+- "compare notes", "pick your brain", "circle back", "touch base", "I'd love to connect", "hope this finds you well", "just following up", "value add", "synergy", "game-changer", "great question".
+- The house openers ("Totally fair", "Totally makes sense", "All good", "No problem", "Appreciate the reply") are on-brand; see the House Reply Examples.
 - Any line that could have been written by a template. If it sounds polished rather than typed by a person, rewrite it.
 
 ## TextTonality: proposing a meeting
