@@ -144,7 +144,7 @@ window.addEventListener("hashchange", route);
 function renderHeader() {
   const { view } = state.route;
   const client = currentClient();
-  const titles = { new: "New chat", clients: "Manage clients", library: "Klaff library" };
+  const titles = { new: "New chat", clients: "Manage clients", library: "Knowledge base" };
   $("#head-name").textContent = view === "client" ? client.name : titles[view];
   $("#head-sub").textContent =
     view === "client" ? [client.company, client.country, client.service_type].filter(Boolean).join(" · ") : "";
@@ -264,7 +264,7 @@ function turnView(turn) {
           ? el(
               "details",
               { class: "sources" },
-              el("summary", {}, "Klaff sources used"),
+              el("summary", {}, "Knowledge base sources used"),
               el("div", {}, [...new Set(turn.sources.map((s) => s.section.replace(/^\d+\s+/, "")))].join(" · ")),
             )
           : el("span", { class: "sources" }),

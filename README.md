@@ -95,7 +95,7 @@ client profile + saved favorites + core Klaff playbook + retrieved Klaff passage
 
 - **Client store** (`src/db.ts`; SQLite locally, Postgres in production): name, alternate spellings, company, service type, target audience, tone, formality, phrasing do's and don'ts, sample messages, optional booking link. Matching uses the name and the alternate spellings, so add any variant that shows up on LinkedIn.
 - **If the name doesn't match** (or two clients are equally close), the app doesn't guess. It asks you to pick the client from the dropdown. Every extracted field stays editable before you regenerate, and **Type the objection instead** skips the screenshot entirely.
-- **Klaff corpus** (`corpus/`, plus uploads on the **Klaff Library** tab):
+- **Klaff corpus** (`corpus/`, plus uploads on the **Knowledge base** tab):
   - `core-texttonality-framework.md` is sent with every request and governs tone, length and formatting (2 to 3 short lines, one idea, spaced lines, no em dashes, tone by lead status, banned AI-sounding phrases). Where it and the Klaff material disagree, TextTonality wins.
   - `core-house-reply-examples.md` is sent with every request: the team's real replies, grouped by objection, with the house moves they share (casual opener, the fork question, "would you be opposed to a quick intro call?", not replacing their advisor or CPA, worst case / best case, one specific hook). They're the gold standard for voice; add new winners here.
   - `core-klaff-style-playbook.md` is sent with every request. It distills the cold-outreach course, *Pitch Anything* and *Flip the Script* into working rules, written in our own words (frames, status, prizing, intrigue, push-pull, no-neediness, anti-bot tells, an objection-reading table, and industry lingo banks).
@@ -105,7 +105,7 @@ client profile + saved favorites + core Klaff playbook + retrieved Klaff passage
 
 ### Adding more Klaff material
 
-- **Quick:** upload a `.docx`, `.md` or `.txt` on the Klaff Library tab. It's searchable immediately.
+- **Quick:** upload a `.docx`, `.md` or `.txt` on the Knowledge base tab. It's searchable immediately.
 - **Permanent (version-controlled):** `npm run corpus:import -- path/to/file.docx`, which writes a cleaned markdown file into `corpus/`. Commit it.
 
 ## Development
