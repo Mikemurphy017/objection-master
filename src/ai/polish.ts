@@ -5,8 +5,12 @@ import type { Generation } from "./generate.ts";
  * dashes, and every thought on its own line with a blank line between, so a
  * reply never lands as one block of text on a phone.
  */
+/** Banned opener: "totally fair" becomes "makes sense", keeping the original capitalisation. */
+export const unbanPhrases = (s: string) =>
+  s.replace(/\b(t)otally fair\b/gi, (_m, t: string) => (t === "T" ? "Makes sense" : "makes sense"));
+
 export function polishMessage(text: string): string {
-  let t = text
+  let t = unbanPhrases(text)
     .replace(/\r\n?/g, "\n")
     // A dash at the end of a line reads as a pause: make it a full stop.
     .replace(/[ \t]*[—–][ \t]*(?=\n|$)/g, ".")
@@ -26,7 +30,7 @@ export function polishMessage(text: string): string {
 }
 
 /** Dashes out of the team-facing notes too; spacing only matters in the replies. */
-const undash = (s: string) => s.replace(/\s*[—–]\s*/g, ", ").replace(/,\s*([.!?])/g, "$1");
+const undash = (s: string) => unbanPhrases(s).replace(/\s*[—–]\s*/g, ", ").replace(/,\s*([.!?])/g, "$1");
 
 export function polishGeneration(g: Generation): Generation {
   const option = (o: Generation["intro_call"]) => ({ label: undash(o.label), message: polishMessage(o.message), why: undash(o.why) });

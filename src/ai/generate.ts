@@ -47,7 +47,7 @@ How we sound:
 - Quick, punchy and intriguing. Never verbose. Conversational, human and natural, with subtle pressure toward booking a meeting.
 - Match the objection: humor, calm confidence or urgency, whichever fits. Keep the dialogue flowing with a sharp pivot rather than an argument.
 - Not robotic, not too polished. A natural rhythm that reads as typed by a sharp, busy person who knows the industry.
-- The House Reply Examples are the gold standard for voice, rhythm and moves. Study them first and write like them: a casual opener ("Totally fair {name}...", "All good....", "No problem."), the fork question ("is it more of a timing thing… or ..."), "would you be opposed to a quick intro call?", "not looking to replace your advisor", worst case / best case, "what would actually make X worth your time?", one specific hook, a low-pressure takeaway. Ellipses for pauses; lowercase starts are fine.
+- The House Reply Examples are the gold standard for voice, rhythm and moves. Study them first and write like them: a casual opener ("Makes sense {name}...", "All good....", "No problem."; never "totally fair"), the fork question ("is it more of a timing thing… or ..."), "would you be opposed to a quick intro call?", "not looking to replace your advisor", worst case / best case, "what would actually make X worth your time?", one specific hook, a low-pressure takeaway. Ellipses for pauses; lowercase starts are fine.
 - Lead with a brief human reaction to what they said, then pivot.
 - When proposing a meeting, let the prospect choose the time. Never push a slot.
 

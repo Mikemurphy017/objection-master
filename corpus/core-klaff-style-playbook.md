@@ -58,7 +58,7 @@ The first filter in a prospect's head is primitive. It ignores anything boring, 
 
 Prospects smell a template in the first four words. These tells lower the sender's status:
 
-- **Stock acknowledgments**: "Great question", "Thanks for getting back to me", "I hear you". The house openers ("Totally fair {name}...", "All good....", "No problem.") are on-brand: short, then straight to the pivot (see the House Reply Examples).
+- **Stock acknowledgments**: "Great question", "Thanks for getting back to me", "I hear you". The house openers ("Makes sense {name}...", "All good....", "No problem.") are on-brand: short, then straight to the pivot (see the House Reply Examples).
 - **Repeating their words back**: if they said "we're all set with marketing", don't write "Sounds like you're all set with marketing". Respond to what they meant, not what they wrote.
 - **Summarizing the offer**: one specific detail beats a description.
 - **Salesy stock phrases**: "Would love to connect", "compare notes", "circle back", "touch base", "no worries at all", "I'd be happy to", "just wanted to", "hope this helps", "value add".

@@ -5,7 +5,8 @@ import { polishGeneration, polishMessage } from "../src/ai/polish.ts";
 test("em and en dashes are removed", () => {
   assert.equal(polishMessage("Reza — early is when it matters."), "Reza, early is when it matters.");
   assert.equal(polishMessage("Fair enough–timing is everything"), "Fair enough, timing is everything");
-  assert.equal(polishMessage("Totally fair —\nWhen works?"), "Totally fair.\n\nWhen works?");
+  assert.equal(polishMessage("Totally fair —\nWhen works?"), "Makes sense.\n\nWhen works?");
+  assert.equal(polishMessage("totally fair Ana... when works?"), "makes sense Ana... when works?");
   assert.ok(!/[—–]/.test(polishMessage("a—b – c — d")));
 });
 

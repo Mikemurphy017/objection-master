@@ -4,7 +4,7 @@ Real replies the TextTonality team has sent. They are the gold standard for voic
 
 ## House moves: what these replies have in common
 
-- **Casual opener, often lowercase, often with their first name:** "Totally fair {first_name}...", "Totally cool.", "All good....", "No problem.", "No problem at all.", "Got it…", "Sounds good {first_name}...", "Appreciate the reply.", "Totally makes sense, Marc.", "That's excellent." Short and human, then straight to the point.
+- **Casual opener, often lowercase, often with their first name:** "Totally cool.", "All good....", "No problem.", "No problem at all.", "Got it…", "Sounds good {first_name}...", "Appreciate the reply.", "Totally makes sense, Marc.", "That's excellent." Short and human, then straight to the point. Never "totally fair".
 - **The fork question.** Give them two easy doors: "just curious, is it more of a timing thing… or because you've already got a financial plan dialed in?" / "was that a 'no' because you've already solved for this… or because it sounds too good to be real?"
 - **The negative-framed ask.** "would you be opposed to a quick intro call?" plus the soft reason "just so we're not strangers when the timing is right."
 - **We're not replacing anyone.** "Full disclosure, not looking to replace your advisor." "I don't replace your CPA, I make them look like a genius." "A second set of eyes on the numbers."
@@ -24,7 +24,7 @@ Just out of curiosity… if this did work exactly how I described, would that ch
 
 ---
 
-Totally fair, Jonathan. Just curious… was that a "no" because you've already solved for this at a high level… or because it sounds too good to be real?
+Makes sense, Jonathan. Just curious… was that a "no" because you've already solved for this at a high level… or because it sounds too good to be real?
 
 ---
 
@@ -46,7 +46,7 @@ Appreciate the straight talk. Quick one though… if someone could shave a few y
 
 ## House examples: "Send me some info"
 
-Totally fair, and I hate wasting time too. That's why I customize everything based on your world, not some generic pitch deck.
+Got it, and I hate wasting time too. That's why I customize everything based on your world, not some generic pitch deck.
 
 Give me 15 mins, and I'll either show you something that makes sense… or we'll both know it's not a fit.
 
@@ -54,7 +54,7 @@ Open to a quick call this week?
 
 ## House examples: "I have an advisor" / "I'm all set" / loyal to my current firm
 
-Totally fair {first_name}. Full disclosure, not looking to replace your advisor. Sometimes it just helps to have a second set of eyes on the numbers.
+All good {first_name}. Full disclosure, not looking to replace your advisor. Sometimes it just helps to have a second set of eyes on the numbers.
 
 Worst case, you walk away even more confident in the plan you already have. Best case, we spot something small that moves the needle.
 
@@ -76,7 +76,7 @@ Open to a 10-min call just to get a feel for it?
 
 ---
 
-Totally fair, sounds like you've got things covered for now. That said, most folks I work with had a team in place too… until they realized what they were leaving on the table.
+Understood, sounds like you've got things covered for now. That said, most folks I work with had a team in place too… until they realized what they were leaving on the table.
 
 Out of curiosity… if I could show you one strategy your current setup hasn't touched, would that earn 15 mins?
 
@@ -92,11 +92,11 @@ Appreciate the reply. Just so I'm clear, you are all set because you've already 
 
 ---
 
-Totally fair, Kevin. Just so you know, some of the most interesting tax advantages we're seeing right now aren't even on most advisors' radars yet. Happy to share one if you're curious.
+Makes sense, Kevin. Just so you know, some of the most interesting tax advantages we're seeing right now aren't even on most advisors' radars yet. Happy to share one if you're curious.
 
 ---
 
-totally fair {first_name}. no pressure at all, but if you're ever curious how someone outside your current setup would approach things, happy to give you the uncensored take.
+all good {first_name}. no pressure at all, but if you're ever curious how someone outside your current setup would approach things, happy to give you the uncensored take.
 
 worst case, it confirms you're already dialed in.
 
@@ -116,7 +116,7 @@ We have a few underutilized strategies to do that... let me know if it's worth t
 
 ---
 
-Totally fair. Just to be clear, I'm not here to replace your accountant. I help people leverage what their accountant is already doing, but with strategies most CPAs aren't even allowed to touch.
+No problem. Just to be clear, I'm not here to replace your accountant. I help people leverage what their accountant is already doing, but with strategies most CPAs aren't even allowed to touch.
 
 If I showed you just one move that could shift a chunk of your money from tax-bound to tax-free… would you be open to exploring it, say, sometime next week?
 
@@ -134,11 +134,11 @@ All good.... just curious, is it more of a timing thing… or because you've alr
 
 ---
 
-totally fair {first_name}... just curious though, would you be opposed to a quick intro call in the meantime, just so we're not strangers when the timing is right?
+makes sense {first_name}... just curious though, would you be opposed to a quick intro call in the meantime, just so we're not strangers when the timing is right?
 
 ---
 
-totally fair {first_name}... would you be opposed to a quick intro call?
+got it {first_name}... would you be opposed to a quick intro call?
 
 just so we're not strangers when the timing is right
 
@@ -160,7 +160,7 @@ Just so we're not strangers when the timing is right.
 
 ---
 
-Totally fair {first_name}... perhaps the timing isn't right for this
+Understood {first_name}... perhaps the timing isn't right for this
 
 Not sure if you would be open to a quick intro call?
 
