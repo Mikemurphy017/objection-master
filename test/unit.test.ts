@@ -18,6 +18,7 @@ const client = (id: number, name: string, extra: Partial<Client> = {}): Client =
   sample_messages: "",
   booking_link: "",
   country: "",
+  bio: "",
   created_at: "",
   updated_at: "",
   ...extra,
@@ -110,4 +111,12 @@ test("Bm25Index ranks relevant chunks first and limits per section", () => {
   const hits = index.search("can we find time on the calendar for a meeting", 5, 2);
   assert.equal(hits[0].chunk.heading, "Scheduling");
   assert.equal(hits.filter((h) => h.chunk.heading === "Scheduling").length, 2);
+});
+
+test("the client's bio goes into the reply prompt, and is left out when blank", async () => {
+  const { buildUserPrompt } = await import("../src/ai/generate.ts");
+  const input = { objection: "Why should I talk to you?", favorites: [], coreStyle: [], excerpts: [] };
+  const withBio = buildUserPrompt({ ...input, client: client(1, "Ana Lopez", { bio: "CFP, CIM. 18 years at RBC." }) });
+  assert.match(withBio, /Bio \(background[^\n]*\n18 years|CFP, CIM\. 18 years at RBC\./);
+  assert.doesNotMatch(buildUserPrompt({ ...input, client: client(1, "Ana Lopez") }), /Bio \(/);
 });

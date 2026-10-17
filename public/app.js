@@ -803,6 +803,7 @@ const FIELD_LABELS = {
   sample_messages: "Sample messages",
   booking_link: "Booking link",
   country: "Country",
+  bio: "Bio",
 };
 /** The details that shape replies most; a client missing any of these is flagged for account managers. */
 const KEY_FIELDS = ["country", "service_type", "target_audience", "tone", "style_notes"];

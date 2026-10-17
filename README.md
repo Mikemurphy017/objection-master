@@ -67,7 +67,7 @@ The server logs which storage it picked at startup (no secrets), e.g. `Data: Pos
 
 On **Manage clients**, click **Import CSV** (or drop a CSV onto the page). You get a preview before anything is saved.
 
-- **Columns** are matched by header name, case and punctuation ignored: Name / Client Name / Full Name (or First Name + Last Name), Other names / AKA (separate several with `;`), Company / Firm, Country / Location / Based in, Service type / Industry, Target audience / ICP / Niche, Tone, Formality, Style notes / Notes, Sample messages, Booking link / Calendly. Unrecognised columns are shown and ignored. A template is downloadable from the dialog.
+- **Columns** are matched by header name, case and punctuation ignored: Name / Client Name / Full Name (or First Name + Last Name), Other names / AKA (separate several with `;`), Company / Firm, Country / Location / Based in, Service type / Industry, Target audience / ICP / Niche, Tone, Formality, Style notes / Notes, Bio / Background / Credentials, Sample messages, Booking link / Calendly. Unrecognised columns are shown and ignored. A template is downloadable from the dialog.
 - **Blanks stay blank.** Anything the file doesn't provide is left empty, and clients missing country, service type, target audience, tone or style notes are flagged **Needs details** for account managers (with a filter and a "Still to fill in" note on the client form).
 - **No duplicates, no overwrites.** Clients already on file are matched with the same fuzzy rules as screenshots (nicknames, middle initials, stored aliases) and skipped; optionally the import fills in only their empty fields. Rows without a name, and names listed twice in the file, are skipped and shown in the preview.
 - Comma-, semicolon- and tab-separated files, quoted cells with commas or line breaks, and Excel's Windows-1252 encoding all work.
@@ -93,7 +93,7 @@ client profile + saved favorites + core Klaff playbook + retrieved Klaff passage
                  OpenAI (or Claude) ──► 3 replies (structured JSON), one per goal
 ```
 
-- **Client store** (`src/db.ts`; SQLite locally, Postgres in production): name, alternate spellings, company, service type, target audience, tone, formality, phrasing do's and don'ts, sample messages, optional booking link. Matching uses the name and the alternate spellings, so add any variant that shows up on LinkedIn.
+- **Client store** (`src/db.ts`; SQLite locally, Postgres in production): name, alternate spellings, company, service type, target audience, tone, formality, phrasing do's and don'ts, sample messages, bio (background, designations, experience: used when a prospect asks "why you?" or about credentials, facts only), optional booking link. Matching uses the name and the alternate spellings, so add any variant that shows up on LinkedIn.
 - **If the name doesn't match** (or two clients are equally close), the app doesn't guess. It asks you to pick the client from the dropdown. Every extracted field stays editable before you regenerate, and **Type the objection instead** skips the screenshot entirely.
 - **Klaff corpus** (`corpus/`, plus uploads on the **Knowledge base** tab):
   - `core-texttonality-framework.md` is sent with every request and governs tone, length and formatting (2 to 3 short lines, one idea, spaced lines, no em dashes, tone by lead status, banned AI-sounding phrases). Where it and the Klaff material disagree, TextTonality wins.

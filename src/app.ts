@@ -47,6 +47,7 @@ const ClientBody = z.object({
   sample_messages: z.string().trim().default(""),
   booking_link: z.string().trim().default(""),
   country: z.string().trim().max(80).default(""),
+  bio: z.string().trim().max(5000).default(""),
 });
 
 const GenerateBody = z.object({

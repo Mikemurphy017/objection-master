@@ -79,6 +79,7 @@ Voice and client fit:
 - Saved favorites for this client are replies the team has already approved. Treat them as the strongest signal of the client's voice. Echo their style, never copy them verbatim.
 - Use the prospect's real first name when you know it (the house style often does). If it isn't known and the line needs a name, write {first_name}.
 - Mirror the prospect's register and length.
+- Client bio: when the objection touches the client's background, credentials, designations (CFP, CFA, CPA, CIM, CLU, etc.), experience or "why you?" ("what makes you different", "how long have you done this", "are you a fiduciary?", "I already have an advisor"), answer with ONE specific, relevant fact from the bio, worn lightly, never a résumé dump. Don't drag the bio into objections it has nothing to do with. Never invent or embellish credentials, years, firms or results; if the bio doesn't cover what's asked, don't claim it.
 - Never invent results, clients, statistics or scarcity. Never name Klaff, his books or his frameworks. Never quote the Klaff excerpts (the house examples may be reused when they fit exactly).
 
 Also return "read" (one short sentence on the subtext and lead status: follow-up later, interested, hard no, or objection) and "recommended" (the one you'd send right now). Keep each "why" to one short sentence.`;
@@ -94,6 +95,7 @@ function formatClient(c: Client): string {
     c.formality && `Formality: ${c.formality}`,
     c.style_notes && `Phrasing preferences / do's and don'ts:\n${c.style_notes}`,
     c.sample_messages && `Sample messages in their voice:\n${c.sample_messages}`,
+    c.bio && `Bio (background, designations, experience; the only facts you may state about the client):\n${c.bio}`,
     c.booking_link && `Booking link (intro_call only, and only if it reads naturally): ${c.booking_link}`,
   ];
   return lines.filter(Boolean).join("\n");

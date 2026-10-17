@@ -14,6 +14,7 @@ export const IMPORT_FIELDS = [
   "sample_messages",
   "booking_link",
   "country",
+  "bio",
 ] as const;
 type Field = (typeof IMPORT_FIELDS)[number];
 
@@ -29,6 +30,7 @@ const HEADER_ALIASES: Record<Field, string[]> = {
   style_notes: ["style notes", "notes", "messaging notes", "phrasing", "phrasing preferences", "dos and donts", "do and dont", "do s and don ts", "preferences", "messaging preferences", "messaging style", "guidelines"],
   sample_messages: ["sample messages", "sample message", "examples", "example messages", "sample copy", "messages"],
   country: ["country", "location", "based in", "region", "nation", "country of residence", "market"],
+  bio: ["bio", "biography", "background", "about", "about them", "credentials", "designations", "experience", "professional background"],
   booking_link: ["booking link", "booking", "calendly", "calendly link", "calendar link", "scheduling link", "meeting link", "book a call", "booking url", "calendar"],
 };
 
@@ -113,6 +115,7 @@ const emptyClient = (): ClientInput => ({
   sample_messages: "",
   booking_link: "",
   country: "",
+  bio: "",
 });
 
 const isBlank = (c: ClientInput | Client, f: Field) => (f === "aliases" ? c.aliases.length === 0 : !String(c[f]).trim());
@@ -198,5 +201,5 @@ export function fillBlanks(stored: Client, incoming: ClientInput, fields: Field[
 
 /** Header row for the downloadable template. */
 export const TEMPLATE_CSV =
-  "Name,Other names,Company,Service type,Target audience,Tone,Formality,Style notes,Sample messages,Booking link\n" +
-  'Jane Doe,"Jane A. Doe; Janie Doe",Doe Wealth Partners,Wealth management for business owners,Owners 2-3 years from a sale,"Dry, confident",Conversational professional,"Short sentences. No exclamation points.",,https://calendly.com/janedoe/intro\n';
+  "Name,Other names,Company,Service type,Target audience,Tone,Formality,Style notes,Bio,Sample messages,Booking link\n" +
+  'Jane Doe,"Jane A. Doe; Janie Doe",Doe Wealth Partners,Wealth management for business owners,Owners 2-3 years from a sale,"Dry, confident",Conversational professional,"Short sentences. No exclamation points.","CFP, CIM. 15 years advising owner-operators.",,https://calendly.com/janedoe/intro\n';

@@ -21,6 +21,8 @@ export interface Client {
   booking_link: string;
   /** Where the client is based; shapes regulations, accounts and lingo in replies. */
   country: string;
+  /** Background, designations, experience: facts replies may lean on (never embellish). */
+  bio: string;
   created_at: string;
   updated_at: string;
 }
@@ -177,6 +179,7 @@ const MIGRATIONS: { table: string; column: string; ddl: string }[] = [
   { table: "generations", column: "sources", ddl: "TEXT NOT NULL DEFAULT '[]'" },
   { table: "favorites", column: "generation_id", ddl: "INTEGER REFERENCES generations(id) ON DELETE SET NULL" },
   { table: "clients", column: "country", ddl: "TEXT NOT NULL DEFAULT ''" },
+  { table: "clients", column: "bio", ddl: "TEXT NOT NULL DEFAULT ''" },
 ];
 
 /** Chunk size for retrieval, in words, with overlap so ideas aren't cut in half. */
@@ -339,8 +342,8 @@ export class SqliteStore implements Store {
     const r = this.db
       .prepare(
         `INSERT INTO clients (name, aliases, company, service_type, target_audience, tone, formality,
-           style_notes, sample_messages, booking_link, country)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+           style_notes, sample_messages, booking_link, country, bio)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       )
       .get(
         input.name,
@@ -354,6 +357,7 @@ export class SqliteStore implements Store {
         input.sample_messages,
         input.booking_link,
         input.country ?? "",
+        input.bio ?? "",
       ) as { id: number };
     return (await this.getClient(r.id))!;
   }
@@ -362,7 +366,7 @@ export class SqliteStore implements Store {
     const res = this.db
       .prepare(
         `UPDATE clients SET name = ?, aliases = ?, company = ?, service_type = ?, target_audience = ?,
-           tone = ?, formality = ?, style_notes = ?, sample_messages = ?, booking_link = ?, country = ?,
+           tone = ?, formality = ?, style_notes = ?, sample_messages = ?, booking_link = ?, country = ?, bio = ?,
            updated_at = datetime('now')
          WHERE id = ?`,
       )
@@ -378,6 +382,7 @@ export class SqliteStore implements Store {
         input.sample_messages,
         input.booking_link,
         input.country ?? "",
+        input.bio ?? "",
         id,
       );
     return res.changes ? await this.getClient(id) : undefined;

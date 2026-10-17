@@ -15,6 +15,7 @@ const clientInput = (name: string) => ({
   sample_messages: "",
   booking_link: "",
   country: "",
+  bio: "",
 });
 
 const turnInput = (clientId: number, objection: string) => ({

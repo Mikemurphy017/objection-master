@@ -411,3 +411,4 @@ button.wide { width: 100%; padding: 11px; margin-top: 4px; }
   .users-table th:nth-child(4), .users-table td:nth-child(4) { display: none; }
   .admin-head { padding: 12px 16px; }
 }
+.field-hint { display: block; font-weight: 400; font-size: 12px; margin-top: 4px; }
