@@ -8,19 +8,27 @@ import { GenerationSchema, buildSystem, buildUserPrompt, type GenerateInput, typ
 
 export const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5";
 
-type Effort = "minimal" | "low" | "medium" | "high";
+type Effort = "none" | "minimal" | "low" | "medium" | "high";
 
 /**
- * Speed settings. Replies are short, so deep reasoning mostly adds wait time:
- * reasoning models (gpt-5, o-series) default to low effort for replies and minimal
- * for reading screenshots, plus low verbosity. Override with OPENAI_REASONING_EFFORT.
+ * Speed settings. Replies are short, so deep reasoning mostly adds wait time.
+ * Reasoning models run at "Instant" (ChatGPT's lowest thinking setting) for both
+ * replies and screenshots, plus low verbosity. In the API that's effort "none"
+ * on gpt-5.1 and later, "minimal" on gpt-5, and "low" (their floor) on o-series.
+ * Override with OPENAI_REASONING_EFFORT (none / minimal / low / medium / high, or "instant").
  * Non-reasoning models (e.g. gpt-4o) reject these parameters, so they're omitted there.
  */
 const IS_REASONING_MODEL = /^(gpt-5|o\d)/.test(OPENAI_MODEL);
 const IS_GPT5 = OPENAI_MODEL.startsWith("gpt-5");
-const REASONING_EFFORT = process.env.OPENAI_REASONING_EFFORT as Effort | undefined;
-function speedParams(defaultEffort: Effort) {
-  const effort = REASONING_EFFORT ?? (IS_REASONING_MODEL ? defaultEffort : undefined);
+export function instantEffort(model: string): Effort {
+  if (/^gpt-5\.\d/.test(model)) return "none";
+  if (model.startsWith("gpt-5")) return "minimal";
+  return "low";
+}
+const envEffort = process.env.OPENAI_REASONING_EFFORT?.trim().toLowerCase();
+const REASONING_EFFORT = (envEffort === "instant" ? instantEffort(OPENAI_MODEL) : envEffort || undefined) as Effort | undefined;
+function speedParams() {
+  const effort = REASONING_EFFORT ?? (IS_REASONING_MODEL ? instantEffort(OPENAI_MODEL) : undefined);
   return {
     ...(effort && { reasoning: { effort } }),
     ...(IS_GPT5 && { verbosity: "low" as const }),
@@ -28,8 +36,8 @@ function speedParams(defaultEffort: Effort) {
 }
 
 /** The `text` (format + verbosity) and `reasoning` request fields for a call. */
-function withSpeed<F>(format: F, defaultEffort: Effort) {
-  const { verbosity, ...rest } = speedParams(defaultEffort);
+function withSpeed<F>(format: F) {
+  const { verbosity, ...rest } = speedParams();
   return { text: { format, ...(verbosity && { verbosity }) }, ...rest };
 }
 
@@ -100,7 +108,7 @@ export async function extractWithOpenAI(
           ],
         },
       ],
-      ...withSpeed(zodTextFormat(ExtractionSchema, "screenshot_extraction"), "minimal"),
+      ...withSpeed(zodTextFormat(ExtractionSchema, "screenshot_extraction")),
     });
     return parsedOrThrow(response, "read this screenshot");
   } catch (err) {
@@ -115,7 +123,7 @@ export async function generateWithOpenAI(input: GenerateInput): Promise<Generati
       // Identical on every request, so OpenAI's automatic prefix caching applies.
       instructions: buildSystem(input.coreStyle),
       input: buildUserPrompt(input),
-      ...withSpeed(zodTextFormat(GenerationSchema, "objection_replies"), "low"),
+      ...withSpeed(zodTextFormat(GenerationSchema, "objection_replies")),
     });
     return parsedOrThrow(response, "answer this one");
   } catch (err) {

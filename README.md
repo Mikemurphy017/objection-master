@@ -29,7 +29,7 @@ Open http://localhost:3000, add a client on the **Clients** tab, then go to **Re
 | `ANTHROPIC_API_KEY` | Optional. When set, Claude reads the screenshots (and writes replies if there's no OpenAI key). |
 | `GENERATION_PROVIDER` / `EXTRACTION_PROVIDER` | Force a provider per step: `openai` or `anthropic`. |
 | `OPENAI_MODEL` | Default `gpt-5`. If OpenAI also reads screenshots, the model needs vision and structured outputs. |
-| `OPENAI_REASONING_EFFORT` | Optional. Reasoning models (gpt-5, o-series) default to `low` for replies and `minimal` for screenshots, with low verbosity, for fast replies. |
+| `OPENAI_REASONING_EFFORT` | Optional. Reasoning models default to "Instant" (ChatGPT's lowest thinking setting: effort `none` on gpt-5.1+, `minimal` on gpt-5) for replies and screenshots, with low verbosity. Set `none`/`minimal`/`low`/`medium`/`high`, or `instant`, to override. |
 | `ADMIN_EMAIL` | The one account that can open `/admin` and manage access. Default `mike@bluestonepartnersllc.com`. |
 | `ADMIN_PASSWORD` | Optional. Sets the owner's first password. Without it, the server log prints a one-time setup link on first start. |
 | `DATABASE_URL` | Postgres connection string. When set, all data (clients, chat turns, saved replies, corpus) lives in Postgres instead of SQLite. See **Storage** below. |

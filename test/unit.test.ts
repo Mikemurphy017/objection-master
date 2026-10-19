@@ -120,3 +120,12 @@ test("the client's bio goes into the reply prompt, and is left out when blank", 
   assert.match(withBio, /Bio \(background[^\n]*\n18 years|CFP, CIM\. 18 years at RBC\./);
   assert.doesNotMatch(buildUserPrompt({ ...input, client: client(1, "Ana Lopez") }), /Bio \(/);
 });
+
+test("OpenAI replies default to Instant: the lowest effort each model accepts", async () => {
+  const { instantEffort } = await import("../src/ai/openai.ts");
+  assert.equal(instantEffort("gpt-5"), "minimal");
+  assert.equal(instantEffort("gpt-5-mini"), "minimal");
+  assert.equal(instantEffort("gpt-5.1"), "none");
+  assert.equal(instantEffort("gpt-5.2-pro"), "none");
+  assert.equal(instantEffort("o4-mini"), "low");
+});
