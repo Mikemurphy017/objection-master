@@ -257,8 +257,14 @@ export function createApp(
       if (!client) return res.status(400).json({ error: "Open a client's chat (or pick a client) before adding a screenshot." });
       const extraction = await ai.extract({ data: req.file.buffer, mimeType: req.file.mimetype }, client.name);
       // Keep the screenshot so the chat history can show it next to the replies.
-      const imageId = `${crypto.randomBytes(16).toString("hex")}.${IMAGE_EXT[req.file.mimetype]}`;
-      await images.save(imageId, req.file.buffer, req.file.mimetype);
+      // Storage trouble (e.g. rotated bucket keys) must never block replies: log it and carry on without the image.
+      let imageId = `${crypto.randomBytes(16).toString("hex")}.${IMAGE_EXT[req.file.mimetype]}`;
+      try {
+        await images.save(imageId, req.file.buffer, req.file.mimetype);
+      } catch (err) {
+        console.error(`Screenshot storage failed, replying without saving it: ${(err as Error).message}`);
+        imageId = "";
+      }
       res.json({ imageId, extraction, clientId: client.id });
     }),
   );
@@ -287,7 +293,7 @@ export function createApp(
         coreStyle: await store.chunks(true),
         excerpts,
       }));
-      const imageId = body.imageId && (await images.exists(body.imageId)) ? body.imageId : "";
+      const imageId = body.imageId && (await images.exists(body.imageId).catch(() => false)) ? body.imageId : "";
       const turn = await store.addTurn({
         client_id: client.id,
         objection_text: body.objection,

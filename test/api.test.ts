@@ -189,3 +189,39 @@ for (const combo of combos) describe(`API (${combo.store.name} + ${combo.images.
   });
 
 });
+
+test("a broken screenshot store (e.g. rotated bucket keys) never blocks replies", async () => {
+  const store = new SqliteStore(":memory:");
+  const denied = () => Promise.reject(new Error("SignatureDoesNotMatch"));
+  const images = Object.assign(new FsImageStore(tmpDir()), { save: denied, exists: denied });
+  const server = createApp(store, fakeAi, { auth: false, images }).listen(0);
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const errors: unknown[] = [];
+  const origError = console.error;
+  console.error = (...a: unknown[]) => void errors.push(a);
+  try {
+    const client = await store.createClient({
+      name: "Gil Mauro", aliases: [], company: "", service_type: "", target_audience: "", tone: "", formality: "",
+      style_notes: "", sample_messages: "", booking_link: "", country: "", bio: "",
+    });
+    const form = new FormData();
+    form.append("screenshot", new Blob([Buffer.from("fake-png")], { type: "image/png" }), "shot.png");
+    form.append("clientId", String(client.id));
+    const analyzed = await fetch(base + "/api/analyze", { method: "POST", body: form });
+    assert.equal(analyzed.status, 200);
+    const body = await analyzed.json();
+    assert.equal(body.imageId, "");
+    assert.equal(body.extraction.objection_text, "We already work with an agency for LinkedIn.");
+
+    const gen = await fetch(base + "/api/generate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: client.id, objection: "Not interested", imageId: `${"a".repeat(32)}.png` }),
+    });
+    assert.equal(gen.status, 200);
+    assert.ok(errors.length >= 1, "the storage failure is logged");
+  } finally {
+    console.error = origError;
+    server.close();
+    await store.close();
+  }
+});
