@@ -129,3 +129,16 @@ test("OpenAI replies default to Instant: the lowest effort each model accepts", 
   assert.equal(instantEffort("gpt-5.2-pro"), "none");
   assert.equal(instantEffort("o4-mini"), "low");
 });
+
+test("startup self-check round-trips a probe through screenshot storage and reports failures", async () => {
+  const { checkImages } = await import("../src/selfcheck.ts");
+  const { FsImageStore } = await import("../src/images.ts");
+  const { tmpDir } = await import("./helpers.ts");
+  const fs = new FsImageStore(tmpDir());
+  const ok = await checkImages(fs);
+  assert.equal(ok.ok, true, ok.detail);
+  const broken = Object.assign(new FsImageStore(tmpDir()), { save: () => Promise.reject(new Error("SignatureDoesNotMatch")) });
+  const bad = await checkImages(broken);
+  assert.equal(bad.ok, false);
+  assert.match(bad.detail, /SignatureDoesNotMatch/);
+});

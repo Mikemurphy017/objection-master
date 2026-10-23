@@ -42,7 +42,7 @@ function withSpeed<F>(format: F) {
 }
 
 let client: OpenAI | null = null;
-function getOpenAI(): OpenAI {
+export function getOpenAI(): OpenAI {
   client ??= new OpenAI({ apiKey: cleanKey(process.env.OPENAI_API_KEY) });
   return client;
 }

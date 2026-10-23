@@ -3,6 +3,7 @@ import { ROOT, createApp, syncRepoCorpus } from "./app.ts";
 import { openStorage } from "./storage.ts";
 import { resolveProviders, selectBackend } from "./ai/providers.ts";
 import { DEFAULT_OWNER_EMAIL, ensureOwner } from "./auth.ts";
+import { selfCheck } from "./selfcheck.ts";
 
 const dataDir = process.env.DATA_DIR || path.join(ROOT, "data");
 const { store, images } = await openStorage(process.env, dataDir);
@@ -33,4 +34,8 @@ app.listen(port, () => {
     // One-time link (7 days) to set the owner's password; it stops working once used.
     console.log(`First-time setup for ${ownerEmail}: open <app URL>${setupPath}`);
   }
+  void selfCheck(images, {
+    openai: needsOpenAI && Boolean(process.env.OPENAI_API_KEY),
+    anthropic: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
+  });
 });
